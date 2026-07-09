@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "kappa-flink-jobs"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "apache-flink==1.18.1",
+    "pyflink==1.18.1",
+    "click>=8.1",
+    "psycopg2-binary>=2.9",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

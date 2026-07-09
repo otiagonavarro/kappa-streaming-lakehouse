@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kappa-simulator"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "kafka-python>=2.0.2",
+    "faker>=24.0",
+    "click>=8.1",
+]
+
+[project.scripts]
+simulator = "simulator.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+target/
+*.jar
+.idea/
+.vscode/
+*.iml
+.DS_Store
+flink-checkpoints/
+flink-savepoints/
