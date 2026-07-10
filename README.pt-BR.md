@@ -1,6 +1,6 @@
 <!-- markdownlint-disable -->
 <div align="center">
-  <img src="./assets/logo.svg" alt="navarro" width="400" />
+  <img src="./assets/logo.svg" alt="navarro" width="200" />
     <h1>Kappa Streaming Lakehouse</h1>
     <h2>Data Lake em Tempo Real com Flink, Iceberg, Nessie & PostgreSQL</h2>
 

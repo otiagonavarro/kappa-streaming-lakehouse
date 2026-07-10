@@ -1,4 +1,5 @@
 __pycache__/
+*.pytest_cache/
 *.pyc
 *.pyo
 .env
@@ -13,5 +14,14 @@ target/
 .vscode/
 *.iml
 .DS_Store
+
+# flink folders
 flink-checkpoints/
 flink-savepoints/
+
+# simulator folders
+simulator/data/
+simulator/logs/
+simulator/results/
+simulator/tmp/
+simulator/tmp/
