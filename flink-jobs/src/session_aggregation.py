@@ -3,7 +3,7 @@ SessionAggregationJob: Kafka → session windows (30-min gap) → Iceberg + Post
 
 Dual sink: durable history in Iceberg, low-latency serving in PostgreSQL (upsert).
 """
-import click
+import click # type: ignore
 from common import build_env, get_env
 
 

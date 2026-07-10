@@ -1,0 +1,109 @@
+# Data contract for the raw_event_ingestion PyFlink job.
+# Format: Open Data Contract Standard (ODCS) v3.0.0 — https://bitol-io.github.io/open-data-contract-standard/
+#
+# This file is the single source of truth read at runtime by flink-jobs/src/raw_event_ingestion.py
+# (via common.load_contract). Changing the Kafka topic, table name, columns, or storage
+# properties here changes the job's behavior — no code edit required for schema/config changes.
+apiVersion: v3.0.0
+kind: DataContract
+id: urn:kappa:contract:raw-events
+name: raw_events
+version: 1.0.0
+status: active
+domain: ecommerce-clickstream
+tenant: kappa
+
+description:
+  purpose: >
+    Immutable, replayable landing zone for e-commerce clickstream events consumed from Kafka.
+    Serves as the single point of contact between event producers (the simulator) and every
+    downstream Flink job in the Kappa pipeline.
+  usage: >
+    Read by the raw_event_ingestion PyFlink job (exactly-once, Kafka -> Iceberg) and by
+    session_aggregation / product_funnel, which independently subscribe to the same topic.
+  limitations: >
+    No deduplication beyond Kafka consumer exactly-once semantics. `metadata` is stored as an
+    unparsed raw JSON string.
+
+servers:
+  - server: kafka-source
+    type: kafka
+    format: json
+    topic: raw-events
+    host: ${KAFKA_BROKERS}
+    config:
+      properties.group.id: raw-event-ingestion
+      scan.startup.mode.default: latest-offset
+      scan.startup.mode.backfill: earliest-offset
+      json.fail-on-missing-field: "false"
+      json.ignore-parse-errors: "true"
+
+  - server: iceberg-sink
+    type: iceberg
+    catalog: nessie_catalog
+    database: kappa
+    table: raw_events
+    config:
+      format-version: "2"
+      write.format.default: parquet
+      write.parquet.compression-codec: snappy
+
+schema:
+  - name: raw_events
+    physicalName: kappa.raw_events
+    logicalType: object
+    physicalType: table
+    description: One row per ingested clickstream event, partitioned by event_date.
+    properties:
+      - name: event_id
+        logicalType: string
+        physicalType: STRING
+        required: true
+        unique: true
+        description: UUIDv4 idempotency key for the event.
+      - name: event_type
+        logicalType: string
+        physicalType: STRING
+        required: true
+        description: Event kind.
+        quality:
+          - type: enum
+            values: [page_view, add_to_cart, purchase]
+      - name: user_id
+        logicalType: string
+        physicalType: STRING
+        required: true
+      - name: session_id
+        logicalType: string
+        physicalType: STRING
+        required: true
+      - name: product_id
+        logicalType: string
+        physicalType: STRING
+        required: false
+      - name: timestamp
+        logicalType: date
+        physicalType: TIMESTAMP(6)
+        required: true
+        description: Event time. Source Kafka payload format is 'yyyy-MM-dd HH:mm:ss.SSS'.
+      - name: metadata
+        logicalType: string
+        physicalType: STRING
+        required: false
+        description: Raw JSON blob (page, referrer, ...), stored unparsed.
+      - name: event_date
+        logicalType: date
+        physicalType: DATE
+        required: true
+        partitionKeyPosition: 1
+        description: Derived from `timestamp`; Iceberg partition column.
+
+customProperties:
+  - property: flink.job.entrypoint
+    value: flink-jobs/src/raw_event_ingestion.py
+  - property: flink.job.checkpointing_mode
+    value: EXACTLY_ONCE
+  - property: flink.job.checkpoint_interval_ms.env
+    value: FLINK_CHECKPOINT_INTERVAL_MS
+  - property: flink.job.checkpoint_interval_ms.default
+    value: "30000"

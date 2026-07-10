@@ -1,8 +1,13 @@
 """Shared config and catalog setup for all PyFlink jobs."""
 import os
-from pyflink.common import Configuration
-from pyflink.datastream import StreamExecutionEnvironment, CheckpointingMode
-from pyflink.table import StreamTableEnvironment
+from pathlib import Path
+
+import yaml # type: ignore
+from pyflink.common import Configuration # type: ignore
+from pyflink.datastream import StreamExecutionEnvironment, CheckpointingMode # type: ignore
+from pyflink.table import StreamTableEnvironment # type: ignore
+
+CONTRACTS_DIR = Path(__file__).resolve().parent.parent / "contracts"
 
 
 def get_env(key: str, default: str | None = None) -> str:
@@ -10,6 +15,93 @@ def get_env(key: str, default: str | None = None) -> str:
     if val is None:
         raise RuntimeError(f"Required env var {key} is not set")
     return val
+
+
+def load_contract(name: str) -> dict:
+    """Load an ODCS data contract YAML from flink-jobs/contracts/<name>.contract.yaml."""
+    path = CONTRACTS_DIR / f"{name}.contract.yaml"
+    with path.open() as f:
+        return yaml.safe_load(f)
+
+
+def contract_server(contract: dict, server_type: str) -> dict:
+    for server in contract["servers"]:
+        if server["type"] == server_type:
+            return server
+    raise KeyError(f"No server of type '{server_type}' in contract {contract['id']}")
+
+
+def contract_custom_property(contract: dict, key: str, default: str | None = None) -> str:
+    for prop in contract.get("customProperties", []):
+        if prop["property"] == key:
+            return prop["value"]
+    if default is not None:
+        return default
+    raise KeyError(f"customProperty '{key}' not found in contract {contract['id']}")
+
+
+def kafka_source_ddl_from_contract(
+    contract: dict,
+    table_name: str,
+    extra_columns_sql: str,
+    kafka_brokers: str,
+    group_id: str,
+    startup_mode: str,
+) -> str:
+    """Build a Kafka source temp table DDL from a contract's kafka-type server entry.
+
+    `extra_columns_sql` carries the staging columns (including watermark/proctime)
+    that are specific to each job's read shape, not part of the contract's target schema.
+    """
+    source = contract_server(contract, "kafka")
+    cfg = source.get("config", {})
+    return f"""
+        CREATE TEMPORARY TABLE {table_name} (
+            {extra_columns_sql}
+        ) WITH (
+            'connector'                     = 'kafka',
+            'topic'                         = '{source["topic"]}',
+            'properties.bootstrap.servers'  = '{kafka_brokers}',
+            'properties.group.id'           = '{group_id}',
+            'scan.startup.mode'             = '{startup_mode}',
+            'format'                        = '{source["format"]}',
+            'json.fail-on-missing-field'    = '{cfg.get("json.fail-on-missing-field", "false")}',
+            'json.ignore-parse-errors'      = '{cfg.get("json.ignore-parse-errors", "true")}'
+        )
+    """
+
+
+def iceberg_sink_ddl_from_contract(contract: dict) -> str:
+    """Build the Iceberg sink CREATE TABLE DDL entirely from the contract's schema + iceberg server."""
+    table_schema = contract["schema"][0]
+    sink = contract_server(contract, "iceberg")
+
+    columns_sql = []
+    partition_cols = []
+    for prop in table_schema["properties"]:
+        name = prop["name"]
+        quoted = f"`{name}`" if name in ("timestamp",) else name
+        columns_sql.append(f"{quoted} {prop['physicalType']}")
+        if "partitionKeyPosition" in prop:
+            partition_cols.append((prop["partitionKeyPosition"], name))
+    partition_cols.sort(key=lambda x: x[0])
+
+    partition_clause = ""
+    if partition_cols:
+        cols = ", ".join(name for _, name in partition_cols)
+        partition_clause = f"PARTITIONED BY ({cols})"
+
+    with_opts = ",\n            ".join(f"'{k}' = '{v}'" for k, v in sink["config"].items())
+    columns_joined = ",\n            ".join(columns_sql)
+
+    return f"""
+        CREATE TABLE IF NOT EXISTS {table_schema['physicalName']} (
+            {columns_joined}
+        ) {partition_clause}
+        WITH (
+            {with_opts}
+        )
+    """
 
 
 def build_env(checkpoint_interval_ms: int | None = None) -> tuple[StreamExecutionEnvironment, StreamTableEnvironment]:
