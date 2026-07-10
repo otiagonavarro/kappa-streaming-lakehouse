@@ -27,3 +27,17 @@ demo-time-travel:
 
 demo-schema-evolution:
 	@bash scripts/schema-evolution-demo.sh
+
+help:
+	@echo "Usage: make <target>"
+	@echo "Targets:"
+	@echo "  up - Start the infrastructure"
+	@echo "  down - Stop the infrastructure"
+	@echo "  check - Check the health of the infrastructure"
+	@echo "  reprocess - Reprocess the data"
+	@echo "  logs - View the logs of the infrastructure"
+	@echo "  sim-start - Start the simulator"
+	@echo "  sim-stop - Stop the simulator"
+	@echo "  demo-time-travel - Run the time travel demo"
+	@echo "  demo-schema-evolution - Run the schema evolution demo"
+	@echo "  help - Show this help message"
