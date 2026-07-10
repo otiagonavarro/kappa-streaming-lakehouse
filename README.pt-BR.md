@@ -7,8 +7,35 @@
   🇺🇸 [English](./README.md) | 🇧🇷 **Português**
 </div>
 
-Implementação de referência de nível produção da **arquitetura Kappa** aplicada a analytics de clickstream de e-commerce.
-Diferente da Lambda, não há camada batch separada — todo processamento passa por um único pipeline de streaming, e o reprocessamento histórico é feito reproduzindo eventos do Kafka.
+## O Problema
+
+Plataformas de e-commerce geram um volume massivo de eventos de clickstream a cada segundo — page views, adições ao carrinho, compras. Times de produto e marketing precisam de respostas em tempo real: quais produtos convertem, como os usuários navegam pelos funis, quais sessões estão ativas.
+
+Arquiteturas de dados tradicionais impõem um trade-off:
+
+- **Batch-first (data warehouse)** — Resultados são precisos mas defasados. Dashboards ficam horas atrás da realidade e decisões são tomadas com dados de ontem.
+- **Arquitetura Lambda** — Roda um caminho rápido de streaming junto com um caminho lento de batch. Duas bases de código precisam produzir resultados idênticos, criando o clássico problema de manutenção dupla: quando divergem, qual está correta?
+
+Nenhuma das opções oferece simultaneamente frescor em tempo real e corretude sem dobrar a complexidade.
+
+## A Solução
+
+Uma **arquitetura Kappa** onde um único pipeline de streaming processa tanto dados em tempo real quanto reprocessamento histórico. Cada evento passa por um único caminho:
+
+> **Kafka → Flink → Iceberg (lakehouse) + PostgreSQL (serving)**
+
+Não há camada batch. Quando você precisa recomputar o histórico, reproduz o log do Kafka desde o início — o mesmo código, o mesmo pipeline, apenas a partir do offset 0.
+
+## Por Que Esta Arquitetura Funciona
+
+| Problema | Como Kappa + Lakehouse resolve |
+|---------|--------------------------------|
+| Divergência de código batch/streaming | Uma base de código — se funciona nos dados ao vivo, funciona nos dados reproduzidos |
+| Latência de dashboard (horas → segundos) | Flink processa evento a evento; resultados chegam ao PostgreSQL em tempo sub-segundo |
+| Reprocessamento sem camada batch | Kafka é a fonte imutável de verdade — replay desde o offset 0 substitui o batch |
+| Data lake sem ACID / time travel | Iceberg traz transações ACID, evolução de schema e time travel para object storage |
+| Leituras de dashboard lentas no data lake | Upserts no PostgreSQL entregam queries sub-10ms para dashboards |
+| Mudanças de schema quebram consumidores | Nessie oferece branching estilo Git para evolução de schema segura no catálogo |
 
 ---
 
@@ -33,8 +60,6 @@ flowchart LR
     ICEBERG -->|"time-travel\nDuckDB queries"| BI
     PG -->|"low-latency\nanalytical queries"| BI
 ```
-
-**Por que Kappa?** Lambda exige duas bases de código (batch + streaming) que precisam produzir resultados idênticos — o clássico problema de manutenção dupla. Kappa mantém um único pipeline; reprocessar a partir do offset 0 do Kafka substitui a camada batch. Veja [docs/trade-offs.md](docs/trade-offs.md) para a análise completa.
 
 ---
 
