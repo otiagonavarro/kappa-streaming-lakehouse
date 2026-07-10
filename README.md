@@ -1,5 +1,11 @@
 <!-- markdownlint-disable -->
-# Kappa Architecture Portfolio — Real-time Data Lake with Flink, Iceberg, Nessie & PostgreSQL
+<div align="center">
+  <img src="./assets/logo.svg" alt="navarro" width="120" />
+    <h1>Kappa Streaming Lakehouse</h1>
+    <h2>Real-time Data Lake with Flink, Iceberg, Nessie & PostgreSQL</h2>
+
+  🇺🇸 **English** | 🇧🇷 [Português](./README.pt-BR.md)
+</div>
 
 A production-quality reference implementation of the **Kappa architecture** applied to e-commerce clickstream analytics.  
 Unlike Lambda, there is no separate batch layer — every computation runs through a single streaming pipeline, and historical reprocessing is done by replaying events from Kafka.
@@ -37,7 +43,7 @@ flowchart LR
 **Requirements:** Docker ≥ 24, Docker Compose ≥ 2.20, 8 GB RAM, 4 CPUs
 
 ```bash
-git clone <repo-url> kappa-streaming-lakehouse
+git clone https://github.com/otiagonavarro/kappa-streaming-lakehouse kappa-streaming-lakehouse
 cd kappa-streaming-lakehouse
 
 # 1. Start the full stack (MinIO by default, no GCS credentials needed)
@@ -84,6 +90,20 @@ Open the MinIO console at **<http://localhost:9001>** (minioadmin / minioadmin) 
 |-------|-----|-----------|
 | `session_metrics` | `session_id` (upsert) | `session_aggregation.py` |
 | `product_funnel_1m` | `(product_id, window_start)` | `product_funnel.py` |
+
+---
+
+## Data Contracts
+
+The `raw_event_ingestion` job is driven by an [ODCS](https://bitol-io.github.io/open-data-contract-standard/) (Open Data Contract Standard) YAML contract at [`flink-jobs/contracts/raw_events.contract.yaml`](flink-jobs/contracts/raw_events.contract.yaml), instead of hardcoded SQL DDL.
+
+The contract is the single point of contact between the `raw-events` Kafka topic and the `kappa.raw_events` Iceberg table — it declares:
+
+- **`servers`** — the Kafka source (topic, format, connector options) and the Iceberg sink (catalog, database, table properties)
+- **`schema`** — column names, types, nullability, and the partition key
+- **`customProperties`** — job-level config (checkpointing mode, checkpoint interval)
+
+`flink-jobs/src/common.py` loads the contract at runtime (`load_contract`) and builds the Kafka source DDL and Iceberg sink DDL from it (`kafka_source_ddl_from_contract`, `iceberg_sink_ddl_from_contract`) — changing the topic, table schema, or storage properties only requires editing the YAML, not the job code.
 
 ---
 
@@ -156,11 +176,14 @@ After reprocessing completes, row counts will be identical to the original run.
 
 ```
 kappa-streaming-lakehouse/
-├── flink-jobs/src/         # PyFlink streaming jobs
-│   ├── common.py           # Shared env config + catalog setup
-│   ├── raw_event_ingestion.py
-│   ├── session_aggregation.py
-│   └── product_funnel.py
+├── flink-jobs/
+│   ├── contracts/           # ODCS data contracts (YAML)
+│   │   └── raw_events.contract.yaml
+│   └── src/                 # PyFlink streaming jobs
+│       ├── common.py        # Shared env config + catalog setup + contract loader
+│       ├── raw_event_ingestion.py
+│       ├── session_aggregation.py
+│       └── product_funnel.py
 ├── simulator/              # Python event simulator
 │   └── src/simulator/
 │       ├── events.py       # Event generators (page_view, add_to_cart, purchase)

@@ -9,7 +9,8 @@ RUN apt-get update && \
 RUN pip3 install --no-cache-dir \
     "requests>=2.31" \
     "psycopg2-binary>=2.9" \
-    "click>=8.1"
+    "click>=8.1" \
+    "pyyaml>=6.0"
 
 # Drop connector JARs into Flink's lib dir (this is what FLINK_HOME/lib resolves to at runtime)
 RUN curl -fsSL \
@@ -39,6 +40,7 @@ WORKDIR /app
 
 COPY infra/job-submitter/submit_jobs.py .
 COPY flink-jobs/src/ ./jobs/
+COPY flink-jobs/contracts/ ./contracts/
 
 # Use system Flink's PyFlink (avoids bundled-JAR bloat from the pip package)
 ENV PYTHONPATH=/opt/flink/opt/python/pyflink.zip:/opt/flink/opt/python/py4j-0.10.9.7-src.zip:/app

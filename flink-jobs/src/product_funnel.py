@@ -3,7 +3,7 @@ ProductFunnelJob: Kafka → 1-minute tumbling windows → PostgreSQL product_fun
 
 Counts page_view / add_to_cart / purchase per product per minute.
 """
-import click
+import click # type: ignore
 from common import build_env, get_env
 
 
