@@ -1,6 +1,6 @@
 # Flink Jobs — DAG Reference
 
-Three PyFlink jobs implement the Kappa pipeline. Each reads from the same Kafka topic (`raw-events`) but computes different projections.
+Five PyFlink jobs implement the Kappa pipeline. Three read from `raw-events` (clickstream), two read from `entity-updates` (CDC dimension/order data).
 
 ---
 
@@ -88,6 +88,66 @@ flowchart LR
 
 ---
 
+## 4. Entity Sync (`entity_sync.py`)
+
+Syncs dimension tables (users, products, categories) from the `entity-updates` CDC topic to both Iceberg and PostgreSQL. Uses a wide Kafka source schema — each message contains fields for all entity types; the job filters by `entity_type` and routes to the correct sink.
+
+```mermaid
+flowchart LR
+    K["Kafka Source\nentity-updates\n(JSON, wide schema)"]
+    F{"entity_type filter"}
+    U["Users\nκ.users + pg.users"]
+    P["Products\nκ.products + pg.products"]
+    C["Categories\nκ.categories + pg.categories"]
+
+    K --> F
+    F -->|"user"| U
+    F -->|"product"| P
+    F -->|"category"| C
+```
+
+**Operator details:**
+
+| Operator | Type | Notes |
+|----------|------|-------|
+| KafkaSource | Source | `group.id = entity-sync`, `earliest-offset` for initial snapshots |
+| Filter + Route | Map | `WHERE entity_type = 'user'/'product'/'category'` per INSERT |
+| IcebergTableSink | Sink | 3 tables; partitioned by `registered_date` (users), `category_id` (products) |
+| JdbcSink | Sink | 3 tables; PostgreSQL UPSERT on primary key |
+
+**Why a wide schema?** A single Kafka topic (`entity-updates`) carries all entity types. The wide schema avoids multiple Kafka consumers with different deserializers. NULL fields for non-matching entity types are harmless.
+
+---
+
+## 5. Order Ingestion (`order_ingestion.py`)
+
+Ingests order and order_item facts from the `entity-updates` CDC topic. Orders are emitted by the simulator on every `purchase` event.
+
+```mermaid
+flowchart LR
+    K["Kafka Source\nentity-updates\n(JSON, wide schema)"]
+    F{"entity_type filter"}
+    O["Orders\nκ.orders + pg.orders"]
+    I["Order Items\nκ.order_items + pg.order_items"]
+
+    K --> F
+    F -->|"order"| O
+    F -->|"order_item"| I
+```
+
+**Operator details:**
+
+| Operator | Type | Notes |
+|----------|------|-------|
+| KafkaSource | Source | `group.id = order-ingestion`, separate consumer group from entity_sync |
+| Filter + Route | Map | `WHERE entity_type = 'order'/'order_item'` per INSERT |
+| IcebergTableSink | Sink | 2 tables; both partitioned by `order_date` |
+| JdbcSink | Sink | 2 tables; PostgreSQL UPSERT on `order_id` / `order_item_id` |
+
+**Star schema:** Orders and order_items are fact tables that join with the dimension tables (users, products, categories) for analytical queries.
+
+---
+
 ## Running Jobs Manually
 
 All jobs accept a `--from-beginning` flag to replay from Kafka offset 0:
@@ -102,6 +162,12 @@ docker compose -f infra/docker-compose.yml exec jobmanager \
 
 docker compose -f infra/docker-compose.yml exec jobmanager \
     python3 /opt/jobs/product_funnel.py --from-beginning --window-minutes 1
+
+docker compose -f infra/docker-compose.yml exec jobmanager \
+    python3 /opt/jobs/entity_sync.py --from-beginning
+
+docker compose -f infra/docker-compose.yml exec jobmanager \
+    python3 /opt/jobs/order_ingestion.py --from-beginning
 ```
 
 Or use `make reprocess` which handles teardown and restart automatically.

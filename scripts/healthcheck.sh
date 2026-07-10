@@ -50,6 +50,18 @@ check "PostgreSQL session_metrics is non-empty" \
 check "PostgreSQL product_funnel_1m is non-empty" \
     "psql '${POSTGRES_DSN}' -tAc 'SELECT COUNT(*) FROM product_funnel_1m' | grep -qv '^0$'"
 
+# 7. PostgreSQL users has data
+check "PostgreSQL users is non-empty" \
+    "psql '${POSTGRES_DSN}' -tAc 'SELECT COUNT(*) FROM users' | grep -qv '^0$'"
+
+# 8. PostgreSQL products has data
+check "PostgreSQL products is non-empty" \
+    "psql '${POSTGRES_DSN}' -tAc 'SELECT COUNT(*) FROM products' | grep -qv '^0$'"
+
+# 9. PostgreSQL orders has data
+check "PostgreSQL orders is non-empty" \
+    "psql '${POSTGRES_DSN}' -tAc 'SELECT COUNT(*) FROM orders' | grep -qv '^0$'"
+
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed"
 

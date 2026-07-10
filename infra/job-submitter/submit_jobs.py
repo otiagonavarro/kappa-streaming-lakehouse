@@ -17,6 +17,8 @@ JOBS = [
     ("Raw Event Ingestion", "jobs/raw_event_ingestion.py"),
     ("Session Aggregation", "jobs/session_aggregation.py"),
     ("Product Funnel",      "jobs/product_funnel.py"),
+    ("Entity Sync",         "jobs/entity_sync.py"),
+    ("Order Ingestion",     "jobs/order_ingestion.py"),
 ]
 
 
