@@ -168,6 +168,7 @@ services:
       KAFKA_BROKERS: ${KAFKA_BROKERS:-broker:9092}
       SIMULATOR_RATE: ${SIMULATOR_RATE:-10}
       SIMULATOR_TOPIC: ${SIMULATOR_TOPIC:-raw-events}
+      SIMULATOR_ENTITY_TOPIC: ${SIMULATOR_ENTITY_TOPIC:-entity-updates}
     depends_on:
       broker:
         condition: service_healthy
@@ -190,6 +191,7 @@ services:
       GCS_BUCKET: ${GCS_BUCKET:-}
       POSTGRES_DSN: ${POSTGRES_DSN:-postgresql://kappa:kappa@postgres:5432/kappa}
       FLINK_CHECKPOINT_INTERVAL_MS: ${FLINK_CHECKPOINT_INTERVAL_MS:-30000}
+      SIMULATOR_ENTITY_TOPIC: ${SIMULATOR_ENTITY_TOPIC:-entity-updates}
     depends_on:
       jobmanager:
         condition: service_healthy

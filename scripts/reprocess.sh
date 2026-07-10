@@ -27,7 +27,7 @@ echo "  Done."
 # 2. Truncate PostgreSQL serving tables
 echo ""
 echo "Step 2: Truncating PostgreSQL serving tables..."
-psql "${POSTGRES_DSN}" -c "TRUNCATE TABLE session_metrics, product_funnel_1m;"
+psql "${POSTGRES_DSN}" -c "TRUNCATE TABLE session_metrics, product_funnel_1m, users, products, categories, orders, order_items CASCADE;"
 echo "  Done."
 
 # 3. Drop and recreate Iceberg tables (via Nessie branch reset would be ideal in production)

@@ -4,7 +4,7 @@ Initialize Iceberg tables in Nessie catalog via PyFlink Table API.
 Run after docker compose up — all services must be healthy.
 """
 import os
-from pyflink.table import EnvironmentSettings, TableEnvironment
+from pyflink.table import EnvironmentSettings, TableEnvironment # type: ignore
 
 
 def get_env(key, default=None):
@@ -98,6 +98,97 @@ def main():
         )
     """)
     print("Created table: kappa.session_metrics")
+
+    # ── E-commerce entity tables ──────────────────────────────────────────────
+
+    env.execute_sql("""
+        CREATE TABLE IF NOT EXISTS kappa.categories (
+            category_id         STRING,
+            name                STRING,
+            parent_category_id  STRING
+        )
+        WITH (
+            'format-version' = '2',
+            'write.format.default' = 'parquet',
+            'write.parquet.compression-codec' = 'snappy'
+        )
+    """)
+    print("Created table: kappa.categories")
+
+    env.execute_sql("""
+        CREATE TABLE IF NOT EXISTS kappa.users (
+            user_id          STRING,
+            name             STRING,
+            email            STRING,
+            city             STRING,
+            registered_date  DATE,
+            status           STRING,
+            updated_at       TIMESTAMP(6)
+        )
+        PARTITIONED BY (registered_date)
+        WITH (
+            'format-version' = '2',
+            'write.format.default' = 'parquet',
+            'write.parquet.compression-codec' = 'snappy'
+        )
+    """)
+    print("Created table: kappa.users")
+
+    env.execute_sql("""
+        CREATE TABLE IF NOT EXISTS kappa.products (
+            product_id    STRING,
+            name          STRING,
+            category_id   STRING,
+            price         DECIMAL(10, 2),
+            status        STRING,
+            created_at    TIMESTAMP(6)
+        )
+        PARTITIONED BY (category_id)
+        WITH (
+            'format-version' = '2',
+            'write.format.default' = 'parquet',
+            'write.parquet.compression-codec' = 'snappy'
+        )
+    """)
+    print("Created table: kappa.products")
+
+    env.execute_sql("""
+        CREATE TABLE IF NOT EXISTS kappa.orders (
+            order_id    STRING,
+            user_id     STRING,
+            total       DECIMAL(10, 2),
+            status      STRING,
+            created_at  TIMESTAMP(6),
+            order_date  DATE
+        )
+        PARTITIONED BY (order_date)
+        WITH (
+            'format-version' = '2',
+            'write.format.default' = 'parquet',
+            'write.parquet.compression-codec' = 'snappy'
+        )
+    """)
+    print("Created table: kappa.orders")
+
+    env.execute_sql("""
+        CREATE TABLE IF NOT EXISTS kappa.order_items (
+            order_item_id  STRING,
+            order_id       STRING,
+            product_id     STRING,
+            quantity       INT,
+            unit_price     DECIMAL(10, 2),
+            line_total     DECIMAL(10, 2),
+            order_date     DATE
+        )
+        PARTITIONED BY (order_date)
+        WITH (
+            'format-version' = '2',
+            'write.format.default' = 'parquet',
+            'write.parquet.compression-codec' = 'snappy'
+        )
+    """)
+    print("Created table: kappa.order_items")
+
     print("Iceberg tables initialized successfully.")
 
 
