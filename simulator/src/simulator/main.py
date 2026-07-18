@@ -4,12 +4,12 @@ import signal
 import sys
 import time
 
-import click # type: ignore
-from kafka import KafkaProducer # type: ignore
+import click  # type: ignore
+from kafka import KafkaProducer  # type: ignore
 try:
-    from kafka.errors import NoBrokersAvailable # type: ignore
+    from kafka.errors import NoBrokersAvailable  # type: ignore
 except ImportError:
-    from kafka.errors import KafkaConnectionError as NoBrokersAvailable # type: ignore # kafka-python ≥3.0
+    from kafka.errors import KafkaConnectionError as NoBrokersAvailable  # type: ignore  # kafka-python ≥3.0
 
 from .events import EventGenerator
 
@@ -34,7 +34,11 @@ def _make_producer(brokers: str, retries: int = 10) -> KafkaProducer:
 @click.command()
 @click.option("--brokers", default=lambda: os.environ.get("KAFKA_BROKERS", "localhost:9092"), show_default=True)
 @click.option("--topic", default=lambda: os.environ.get("SIMULATOR_TOPIC", "raw-events"), show_default=True)
-@click.option("--entity-topic", default=lambda: os.environ.get("SIMULATOR_ENTITY_TOPIC", "entity-updates"), show_default=True)
+@click.option(
+    "--entity-topic",
+    default=lambda: os.environ.get("SIMULATOR_ENTITY_TOPIC", "entity-updates"),
+    show_default=True,
+)
 @click.option("--rate", default=lambda: int(os.environ.get("SIMULATOR_RATE", "10")), type=int, help="Events per second")
 @click.option("--count", default=0, type=int, help="Produce exactly N events then exit (0 = infinite)")
 @click.option("--seed", default=None, type=int, help="RNG seed for reproducible output")
@@ -61,9 +65,12 @@ def cli(brokers: str, topic: str, entity_topic: str, rate: int, count: int, seed
     for snap in snapshots:
         producer.send(entity_topic, value=snap)
     producer.flush()
-    click.echo(f"  {len(snapshots)} entity snapshots sent ({len([s for s in snapshots if s['entity_type'] == 'user'])} users, "
-               f"{len([s for s in snapshots if s['entity_type'] == 'product'])} products, "
-               f"{len([s for s in snapshots if s['entity_type'] == 'category'])} categories)")
+    users = len([s for s in snapshots if s["entity_type"] == "user"])
+    products = len([s for s in snapshots if s["entity_type"] == "product"])
+    categories = len([s for s in snapshots if s["entity_type"] == "category"])
+    click.echo(
+        f"  {len(snapshots)} entity snapshots sent ({users} users, {products} products, {categories} categories)"
+    )
 
     click.echo(f"Producing to {brokers}/{topic} at {rate} eps (seed={seed}, count={'∞' if count == 0 else count})")
 

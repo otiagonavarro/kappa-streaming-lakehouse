@@ -1,0 +1,64 @@
+dataContractSpecification: 1.1.0
+id: silver.user_sessions
+info:
+  title: User Session Boundaries
+  version: 1.0.0
+  owner: data-platform
+  description: |
+    Session boundaries computed from validated events.
+    A session is defined as a sequence of events from the same user_id/session_id
+    with a configured inactivity gap (default: 30 min).
+  layer: silver
+  source: iceberg://polaris/silver/validated_events
+  tags:
+    - layer:silver
+    - sessionization
+
+schema:
+  - name: session_id
+    type: STRING
+    logicalType: uuid
+    description: Unique session identifier
+    required: true
+    tags:
+      - governance:primary_key
+  - name: user_id
+    type: STRING
+    logicalType: user-identifier
+    description: User who owns the session
+    required: true
+    tags:
+      - governance:dimension
+  - name: session_start
+    type: TIMESTAMP(6)
+    logicalType: event-time
+    description: First event timestamp in the session
+    required: true
+  - name: session_end
+    type: TIMESTAMP(6)
+    logicalType: event-time
+    description: Last event timestamp in the session (before gap timeout)
+    required: true
+  - name: event_count
+    type: BIGINT
+    description: Total number of events in the session
+    required: true
+  - name: session_date
+    type: DATE
+    logicalType: partition-key
+    description: Partition key derived from session_start
+    required: true
+    tags:
+      - governance:partition_key
+
+partitioning:
+  - session_date
+
+quality:
+  - type: notNull
+    columns:
+      - session_id
+      - user_id
+      - session_start
+  - type: custom
+    description: session_end must be >= session_start

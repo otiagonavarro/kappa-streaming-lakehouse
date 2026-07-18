@@ -46,7 +46,7 @@ flowchart LR
     SIM["🐍 Event Simulator\n(Python + Faker)"]
     KAFKA["📨 Kafka\n(Redpanda)"]
     FLINK["⚡ Apache Flink\n(PyFlink 1.18)"]
-    NESSIE["🗂 Nessie Catalog\n(REST)"]
+    POLARIS["🗂 Apache Polaris Catalog\n(REST)"]
     ICEBERG["🧊 Iceberg Tables\n(GCS / MinIO)"]
     PG["🐘 PostgreSQL\n(Serving layer)"]
     BI["📊 Analytics\n(DuckDB / psql)"]
@@ -56,7 +56,7 @@ flowchart LR
     FLINK -->|"raw_event_ingestion\n(exactly-once)"| ICEBERG
     FLINK -->|"session_aggregation\n(upsert)"| PG
     FLINK -->|"product_funnel\n(1-min windows)"| PG
-    NESSIE -.->|"catalog metadata"| ICEBERG
+    POLARIS -.->|"catalog metadata"| ICEBERG
     ICEBERG -->|"time-travel\nDuckDB queries"| BI
     PG -->|"low-latency\nanalytical queries"| BI
 ```
@@ -102,7 +102,7 @@ Open the MinIO console at **<http://localhost:9001>** (minioadmin / minioadmin) 
 }
 ```
 
-### Iceberg Tables (Nessie catalog → `kappa` namespace)
+### Iceberg Tables (Apache Polaris catalog → `kappa` namespace)
 
 | Table | Partitioned by | Purpose |
 |-------|---------------|---------|
@@ -140,7 +140,7 @@ The contract is the single point of contact between the `raw-events` Kafka topic
 |---------|--------|-----|
 | Architecture | Kappa | Single pipeline; reprocessing via Kafka replay |
 | Table format | Iceberg | Best Flink connector, engine-agnostic, GCS native |
-| Catalog | Nessie | Git-like branching, production-grade REST API |
+| Catalog | Apache Polaris | Iceberg REST API catalog, Snowflake OSS |
 | Streaming engine | PyFlink | Python-native, full DataStream + Table API |
 | Serving layer | PostgreSQL | Sub-10ms latency for dashboard queries |
 | Local dev | MinIO | Zero-cost GCS proxy, `STORAGE_BACKEND=gcs` to switch |
@@ -188,7 +188,7 @@ After reprocessing completes, row counts will be identical to the original run.
 |-----------|---------|
 | Apache Flink (PyFlink) | 1.18.1 |
 | Apache Iceberg | 1.5.2 (flink-runtime-1.18) |
-| Project Nessie | 0.76.6 |
+| Apache Polaris | latest |
 | Redpanda (Kafka-compatible) | 23.3.6 |
 | PostgreSQL | 15.6 |
 | Python | 3.11 |

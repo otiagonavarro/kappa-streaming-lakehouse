@@ -1,0 +1,69 @@
+dataContractSpecification: 1.1.0
+id: gold.user_360
+info:
+  title: User 360 View
+  version: 1.0.0
+  owner: data-analytics
+  description: |
+    Customer 360 aggregated view: lifetime session count, total purchases,
+    average session duration, first/last activity dates, conversion flag.
+  layer: gold
+  source: iceberg://polaris/gold/session_metrics
+  tags:
+    - layer:gold
+    - customer-360
+    - serving
+
+schema:
+  - name: user_id
+    type: STRING
+    logicalType: user-identifier
+    description: User identifier
+    required: true
+    tags:
+      - governance:primary_key
+      - governance:dimension
+  - name: total_sessions
+    type: BIGINT
+    description: Lifetime number of sessions for this user
+    required: true
+  - name: total_events
+    type: BIGINT
+    description: Lifetime total events across all sessions
+    required: true
+  - name: total_page_views
+    type: BIGINT
+    description: Lifetime page views
+    required: true
+  - name: total_add_to_carts
+    type: BIGINT
+    description: Lifetime add-to-cart events
+    required: true
+  - name: total_purchases
+    type: BIGINT
+    description: Lifetime purchase events
+    required: true
+  - name: avg_session_duration_seconds
+    type: DOUBLE
+    description: Average session duration across all sessions
+    required: true
+  - name: first_activity_date
+    type: DATE
+    description: Date of first observed event
+    required: true
+  - name: last_activity_date
+    type: DATE
+    description: Date of most recent observed event
+    required: true
+  - name: is_converted
+    type: BOOLEAN
+    description: Whether the user has ever purchased
+    required: true
+
+quality:
+  - type: notNull
+    columns:
+      - user_id
+      - total_sessions
+  - type: custom
+    description: last_activity_date >= first_activity_date

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Submit PyFlink jobs to the standalone Flink cluster via flink run --detached."""
+
+import contextlib
 import os
 import subprocess
 import sys
@@ -14,35 +16,31 @@ FLINK_API = f"http://{FLINK_HOST}:{FLINK_PORT}"
 FLINK_HOME = os.environ.get("FLINK_HOME", "/opt/flink")
 
 JOBS = [
-    ("Raw Event Ingestion", "jobs/raw_event_ingestion.py"),
-    ("Session Aggregation", "jobs/session_aggregation.py"),
-    ("Product Funnel",      "jobs/product_funnel.py"),
-    ("Entity Sync",         "jobs/entity_sync.py"),
-    ("Order Ingestion",     "jobs/order_ingestion.py"),
+    ("Bronze: Raw Event Ingestion",  "jobs/raw_event_ingestion.py"),
+    ("Silver: Event Enrichment",      "jobs/silver_enrichment.py"),
+    ("Gold: Session Aggregation",     "jobs/session_aggregation.py"),
+    ("Gold: Product Funnel",          "jobs/product_funnel.py"),
+    ("Gold: User 360",                "jobs/user_360.py"),
 ]
 
 
 def wait_for_flink(timeout: int = 120) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
-        try:
+        with contextlib.suppress(requests.RequestException):
             resp = requests.get(f"{FLINK_API}/overview", timeout=5)
             if resp.status_code == 200 and resp.json().get("taskmanagers", 0) > 0:
                 print(f"Flink ready: {resp.json()['taskmanagers']} TaskManager(s) online")
                 return
-        except requests.RequestException:
-            pass
         print("Waiting for Flink cluster…")
         time.sleep(5)
     raise TimeoutError(f"Flink cluster not ready after {timeout}s")
 
 
 def submit_job(name: str, script_path: str, from_beginning: bool = False) -> str:
-    """Submit via flink run --detached. Returns job ID."""
     cmd = [
         f"{FLINK_HOME}/bin/flink", "run",
         "--detached",
-        # Use -D config flags so the client resolves REST via the correct port
         "-D", f"jobmanager.rpc.address={FLINK_HOST}",
         "-D", f"jobmanager.rpc.port={FLINK_RPC_PORT}",
         "-D", f"rest.address={FLINK_HOST}",
@@ -51,6 +49,7 @@ def submit_job(name: str, script_path: str, from_beginning: bool = False) -> str
         "-D", "python.executable=python3",
         "-py", script_path,
         "-pyfs", "jobs/",
+        "-pyfs", "/app",
     ]
     if from_beginning:
         cmd.append("--from-beginning")
@@ -67,7 +66,7 @@ def submit_job(name: str, script_path: str, from_beginning: bool = False) -> str
 def monitor_jobs(job_ids: list[str]) -> None:
     print(f"Monitoring {len(job_ids)} job(s) via Flink REST API…")
     while True:
-        try:
+        with contextlib.suppress(requests.RequestException):
             resp = requests.get(f"{FLINK_API}/jobs", timeout=5)
             if resp.status_code == 200:
                 jobs = {j["id"]: j["status"] for j in resp.json().get("jobs", [])}
@@ -75,8 +74,6 @@ def monitor_jobs(job_ids: list[str]) -> None:
                     status = jobs.get(jid, "UNKNOWN")
                     if status in ("FAILED", "CANCELED"):
                         print(f"WARNING: job {jid} is {status}", file=sys.stderr)
-        except requests.RequestException:
-            pass
         time.sleep(30)
 
 
@@ -92,8 +89,7 @@ def main() -> int:
     job_ids: list[str] = []
     for name, script in JOBS:
         try:
-            job_id = submit_job(name, script, from_beginning)
-            if job_id:
+            if job_id := submit_job(name, script, from_beginning):
                 job_ids.append(job_id)
             time.sleep(3)
         except Exception as exc:

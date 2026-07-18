@@ -6,7 +6,9 @@ set -euo pipefail
 KAFKA_BROKERS=${KAFKA_BROKERS:-localhost:9092}
 FLINK_API=${FLINK_API:-http://localhost:8081}
 POSTGRES_DSN=${POSTGRES_DSN:-postgresql://kappa:kappa@localhost:5432/kappa}
-NESSIE_URI=${NESSIE_URI:-http://localhost:19120/api/v1}
+POLARIS_URI=${POLARIS_URI:-http://localhost:8181/api/catalog}
+POLARIS_CLIENT_ID=${POLARIS_CLIENT_ID:-root}
+POLARIS_CLIENT_SECRET=${POLARIS_CLIENT_SECRET:-s3cr3t}
 
 PASS=0
 FAIL=0
@@ -38,9 +40,9 @@ check "Flink JobManager reachable" \
 check "Flink streaming jobs running" \
     "curl -sf ${FLINK_API}/jobs | python3 -c \"import sys,json; d=json.load(sys.stdin); sys.exit(0 if any(j['status']=='RUNNING' for j in d.get('jobs',[])) else 1)\""
 
-# 4. Nessie catalog reachable
-check "Nessie REST catalog reachable" \
-    "curl -sf ${NESSIE_URI}/config"
+# 4. Apache Polaris catalog reachable
+check "Apache Polaris REST catalog reachable" \
+    "curl -sf ${POLARIS_URI}/v1/config"
 
 # 5. PostgreSQL session_metrics has data
 check "PostgreSQL session_metrics is non-empty" \

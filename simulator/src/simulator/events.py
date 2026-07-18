@@ -40,13 +40,16 @@ class EventGenerator:
         session_id = self._get_or_create_session(user_id)
         product_id = self._rng.choice(self._product_ids)
 
+        now = datetime.now(tz=timezone.utc)
+        timestamp = now.strftime("%Y-%m-%d %H:%M:%S.") + f"{now.microsecond // 1000:03d}"
+
         event: dict = {
             "event_id": str(uuid.UUID(int=self._rng.getrandbits(128))),
             "event_type": event_type,
             "user_id": user_id,
             "session_id": session_id,
             "product_id": product_id,
-            "timestamp": datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.") + f"{datetime.now(tz=timezone.utc).microsecond // 1000:03d}",
+            "timestamp": timestamp,
             "metadata": {},
         }
 
@@ -75,18 +78,20 @@ class EventGenerator:
 
     def generate_entity_snapshots(self) -> list[dict]:
         """Return initial snapshots of all entities for the entity-updates topic."""
-        snapshots: list[dict] = []
         now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.000")
 
-        for cat in self._categories.all():
-            snapshots.append({**cat, "entity_type": "category", "timestamp": now})
-
-        for user in self._users.all():
-            snapshots.append({**user, "entity_type": "user", "updated_at": now, "timestamp": now})
-
-        for product in self._products.all():
-            snapshots.append({**product, "entity_type": "product", "timestamp": now})
-
+        snapshots: list[dict] = [
+            {**cat, "entity_type": "category", "timestamp": now}
+            for cat in self._categories.all()
+        ]
+        snapshots.extend(
+            {**user, "entity_type": "user", "updated_at": now, "timestamp": now}
+            for user in self._users.all()
+        )
+        snapshots.extend(
+            {**product, "entity_type": "product", "timestamp": now}
+            for product in self._products.all()
+        )
         return snapshots
 
     def generate_entity_update(self) -> dict | None:

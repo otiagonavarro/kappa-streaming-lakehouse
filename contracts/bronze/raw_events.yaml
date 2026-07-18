@@ -1,0 +1,91 @@
+dataContractSpecification: 1.1.0
+id: bronze.raw_events
+info:
+  title: Raw Clickstream Events
+  version: 1.0.0
+  owner: data-platform
+  description: |
+    Raw events ingested directly from Kafka (page_view, add_to_cart, purchase).
+    This is the first touch point — data is accepted as-is with minimal validation.
+  layer: bronze
+  source: kafka://raw-events
+  sink: iceberg://polaris/bronze/raw_events
+  tags:
+    - layer:bronze
+    - immutable
+    - event-sourcing
+
+schema:
+  - name: event_id
+    type: STRING
+    logicalType: uuid
+    description: Unique event identifier
+    required: true
+    tags:
+      - governance:primary_key
+    quality:
+      - type: notNull
+      - type: uniqueness
+  - name: event_type
+    type: STRING
+    description: Event category
+    required: true
+    tags:
+      - governance:classification
+    quality:
+      - type: enumeration
+        values:
+          - page_view
+          - add_to_cart
+          - purchase
+  - name: user_id
+    type: STRING
+    logicalType: user-identifier
+    description: Anonymous or authenticated user ID
+    required: true
+    tags:
+      - governance:dimension
+  - name: session_id
+    type: STRING
+    logicalType: uuid
+    description: Browser/app session identifier
+    required: true
+  - name: product_id
+    type: STRING
+    description: Product SKU or identifier (nullable — not all event types have a product)
+    required: false
+    tags:
+      - governance:dimension
+  - name: event_timestamp
+    type: TIMESTAMP(6)
+    logicalType: event-time
+    description: Client-side event timestamp with microsecond precision
+    required: true
+    tags:
+      - governance:timestamp
+  - name: metadata
+    type: STRING
+    logicalType: json
+    description: Arbitrary JSON metadata (page URL, referrer, browser info, etc.)
+    required: false
+  - name: event_date
+    type: DATE
+    logicalType: partition-key
+    description: Partition key derived from event_timestamp
+    required: true
+    tags:
+      - governance:partition_key
+
+partitioning:
+  - event_date
+
+quality:
+  - type: rowCount
+    mustBeGreaterThan: 0
+  - type: freshness
+    interval: 5m
+    description: Data should be visible in the catalog within 5 minutes of production
+
+sla:
+  availability: "99.9%"
+  latency: 5m
