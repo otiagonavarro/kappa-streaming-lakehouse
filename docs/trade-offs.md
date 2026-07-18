@@ -29,7 +29,7 @@ Honest comparisons of every major technology choice in this project.
 | GCS support | **Native** via `gcs-connector-hadoop` | Supported | Supported |
 | Schema evolution | ADD/DROP/RENAME without rewrite | ADD only (without rewrite) | ADD/DROP with rewrite risk |
 | Time travel | Full snapshot history | Log-based (vacuum deletes history) | Timeline-based |
-| Catalog ecosystem | REST (Polaris), Hive, JDBC | Unity, Hive | Hive only (primarily) |
+| Catalog ecosystem | REST (Nessie), Hive, JDBC | Unity, Hive | Hive only (primarily) |
 | When to choose Delta | Heavy Databricks shop; Unity Catalog required | — | — |
 | When to choose Hudi | Need upserts at very high write frequency (HoodieMergeOnRead) | — | — |
 
@@ -69,17 +69,17 @@ Honest comparisons of every major technology choice in this project.
 
 ---
 
-## 5. Apache Polaris REST Catalog vs JDBC Catalog
+## 5. Nessie REST Catalog vs JDBC Catalog
 
-| Criterion | Apache Polaris (this project) | JDBC (Postgres-backed) |
-|-----------|-----------------------------|----------------------|
-| Standard compliance | **Iceberg REST API** — any Iceberg-compatible engine | Iceberg SQL-based catalog |
-| Multi-engine | Native — Trino, Spark, Flink, DuckDB all work via REST | Same |
-| Authentication | Built-in OAuth2 / bearer token | PostgreSQL auth |
-| Production use | Snowflake open-sourced, active community | Common in self-hosted setups |
+| Criterion | Nessie (this project) | JDBC (Postgres-backed) |
+|-----------|----------------------|----------------------|
+| Catalog branching | **Yes** — git-like branches/tags | No |
+| Schema drift protection | Branch → merge workflow | Manual |
 | Operational complexity | One extra Docker service | Zero extra service |
+| Production use | Dremio cloud, Project Nessie OSS | Common in self-hosted setups |
+| Multi-engine | Any Iceberg client | Any Iceberg client |
 
-**Recommendation:** Apache Polaris in this project because it demonstrates the Iceberg REST catalog standard and is the open-source catalog from Snowflake. JDBC catalog is simpler and perfectly valid for single-engine setups.
+**Recommendation:** Nessie in this project because it demonstrates production patterns and catalog branching is a key Iceberg feature. JDBC catalog is simpler and perfectly valid for single-engine setups.
 
 ---
 
@@ -89,7 +89,7 @@ Honest comparisons of every major technology choice in this project.
 |----------|--------|-----------|
 | Architecture | Kappa | Single pipeline, Kafka replay = no batch layer needed |
 | Table format | Iceberg | Best Flink connector + engine-agnostic |
-| Catalog | Apache Polaris | Iceberg REST API catalog, Snowflake OSS |
+| Catalog | Nessie | Git-style branching, production-grade REST API |
 | Stream processor | PyFlink | Native session windows, exactly-once, Python |
 | Serving layer | PostgreSQL | Sub-10ms latency for dashboard reads |
 | Local storage | MinIO | Zero-cost GCS proxy |

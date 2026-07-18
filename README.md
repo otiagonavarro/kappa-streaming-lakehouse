@@ -46,8 +46,10 @@ flowchart LR
     SIM["🐍 Event Simulator\n(Python + Faker)"]
     KAFKA["📨 Kafka\n(Redpanda)"]
     FLINK["⚡ Apache Flink\n(PyFlink 1.18)"]
-    POLARIS["🗂 Apache Polaris Catalog\n(REST)"]
+    NESSIE["🗂 Nessie Catalog\n(REST)"]
     ICEBERG["🧊 Iceberg Tables\n(GCS / MinIO)"]
+    DORIS["🐳 Apache Doris\n(Iceberg + JDBC federation)"]
+    CUBE["🧮 Cube.js\n(semantic layer / API)"]
     PG["🐘 PostgreSQL\n(Serving layer)"]
     BI["📊 Analytics\n(DuckDB / psql)"]
 
@@ -56,9 +58,14 @@ flowchart LR
     FLINK -->|"raw_event_ingestion\n(exactly-once)"| ICEBERG
     FLINK -->|"session_aggregation\n(upsert)"| PG
     FLINK -->|"product_funnel\n(1-min windows)"| PG
-    POLARIS -.->|"catalog metadata"| ICEBERG
+    NESSIE -.->|"catalog metadata"| ICEBERG
+    DORIS -->|"CREATE CATALOG ... TYPE=iceberg\n(zero re-ingestion)"| ICEBERG
+    DORIS -.->|"Iceberg REST"| NESSIE
+    DORIS -->|"CREATE CATALOG ... TYPE=jdbc"| PG
+    CUBE -->|"MySQL protocol"| DORIS
     ICEBERG -->|"time-travel\nDuckDB queries"| BI
     PG -->|"low-latency\nanalytical queries"| BI
+    CUBE -->|"REST / SQL API"| BI
 ```
 
 ---
@@ -82,7 +89,9 @@ psql postgresql://kappa:kappa@localhost:5432/kappa -f queries/top_converting_pro
 ```
 
 Open the Flink Web UI at **<http://localhost:8081>** to see running jobs and DAGs.  
-Open the MinIO console at **<http://localhost:9001>** (minioadmin / minioadmin) to browse Iceberg data files.
+Open the MinIO console at **<http://localhost:9001>** (minioadmin / minioadmin) to browse Iceberg data files.  
+Open the Cube.js Playground at **<http://localhost:4000>** to explore the semantic layer and run sample queries.  
+Query Doris directly with `mysql -h127.0.0.1 -P9030 -uroot`. Two catalogs are pre-registered: `lakehouse` (Iceberg tables via Nessie, e.g. `lakehouse.gold.session_metrics`) and `postgres` (the JDBC-federated serving layer, e.g. `postgres.public.session_metrics`, `postgres.public.users`) — both queryable in the same session, including joins across them.
 
 ---
 
@@ -102,7 +111,7 @@ Open the MinIO console at **<http://localhost:9001>** (minioadmin / minioadmin) 
 }
 ```
 
-### Iceberg Tables (Apache Polaris catalog → `kappa` namespace)
+### Iceberg Tables (Nessie catalog → `kappa` namespace)
 
 | Table | Partitioned by | Purpose |
 |-------|---------------|---------|
@@ -140,7 +149,7 @@ The contract is the single point of contact between the `raw-events` Kafka topic
 |---------|--------|-----|
 | Architecture | Kappa | Single pipeline; reprocessing via Kafka replay |
 | Table format | Iceberg | Best Flink connector, engine-agnostic, GCS native |
-| Catalog | Apache Polaris | Iceberg REST API catalog, Snowflake OSS |
+| Catalog | Nessie | Git-style branching, production-grade REST API |
 | Streaming engine | PyFlink | Python-native, full DataStream + Table API |
 | Serving layer | PostgreSQL | Sub-10ms latency for dashboard queries |
 | Local dev | MinIO | Zero-cost GCS proxy, `STORAGE_BACKEND=gcs` to switch |
@@ -188,7 +197,9 @@ After reprocessing completes, row counts will be identical to the original run.
 |-----------|---------|
 | Apache Flink (PyFlink) | 1.18.1 |
 | Apache Iceberg | 1.5.2 (flink-runtime-1.18) |
-| Apache Polaris | latest |
+| Project Nessie | 0.108.2 |
+| Apache Doris | 4.1.3 |
+| Cube.js | latest |
 | Redpanda (Kafka-compatible) | 23.3.6 |
 | PostgreSQL | 15.6 |
 | Python | 3.11 |

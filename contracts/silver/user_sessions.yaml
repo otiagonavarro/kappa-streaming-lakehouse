@@ -9,7 +9,7 @@ info:
     A session is defined as a sequence of events from the same user_id/session_id
     with a configured inactivity gap (default: 30 min).
   layer: silver
-  source: iceberg://polaris/silver/validated_events
+  source: iceberg://nessie/silver/validated_events
   tags:
     - layer:silver
     - sessionization

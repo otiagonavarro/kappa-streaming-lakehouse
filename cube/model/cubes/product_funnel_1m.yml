@@ -1,0 +1,33 @@
+cubes:
+  - name: product_funnel_1m
+    sql_table: lakehouse.gold.product_funnel_1m
+
+    dimensions:
+      - name: product_id
+        sql: product_id
+        type: string
+        primary_key: true
+
+      - name: window_start
+        sql: window_start
+        type: time
+
+      - name: window_end
+        sql: window_end
+        type: time
+
+    measures:
+      - name: count
+        type: count
+
+      - name: total_page_views
+        sql: page_views
+        type: sum
+
+      - name: total_add_to_carts
+        sql: add_to_carts
+        type: sum
+
+      - name: total_purchases
+        sql: purchases
+        type: sum

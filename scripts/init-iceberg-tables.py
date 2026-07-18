@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """
-Initialize Iceberg tables across bronze/silver/gold layers via Apache Polaris.
+Initialize Iceberg tables across bronze/silver/gold layers via Project Nessie.
 Schemas are driven by ODCS contracts in contracts/.
 """
 import sys
 import os
-import json
-import urllib.request
-import urllib.parse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "flink-jobs", "src"))
 
@@ -22,23 +19,6 @@ def get_env(key, default=None):
     return val
 
 
-def get_polaris_token():
-    token_url = get_env("POLARIS_TOKEN_URL", "http://localhost:8181/api/catalog/v1/oauth/tokens")
-    client_id = get_env("POLARIS_CLIENT_ID", "root")
-    client_secret = get_env("POLARIS_CLIENT_SECRET", "s3cr3t")
-    data = urllib.parse.urlencode({
-        "grant_type": "client_credentials",
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "scope": "PRINCIPAL_ROLE:ALL",
-    }).encode()
-    req = urllib.request.Request(token_url, data=data, method="POST")
-    req.add_header("Content-Type", "application/x-www-form-urlencoded")
-    with urllib.request.urlopen(req) as resp:
-        body = json.loads(resp.read())
-    return body["access_token"]
-
-
 TABLE_SPECS = [
     ("bronze", "raw_events"),
     ("silver", "validated_events"),
@@ -50,10 +30,7 @@ TABLE_SPECS = [
 
 
 def main():
-    polaris_uri = get_env("POLARIS_URI", "http://localhost:8181/api/catalog")
-    polaris_client_id = get_env("POLARIS_CLIENT_ID", "root")
-    polaris_client_secret = get_env("POLARIS_CLIENT_SECRET", "s3cr3t")
-    polaris_token = get_polaris_token()
+    nessie_uri = get_env("NESSIE_URI", "http://localhost:19120/api/v1")
     storage_backend = get_env("STORAGE_BACKEND", "minio")
     minio_endpoint = get_env("MINIO_ENDPOINT", "http://localhost:9000")
     minio_access_key = get_env("MINIO_ACCESS_KEY", "minioadmin")
@@ -67,16 +44,12 @@ def main():
     if storage_backend == "gcs":
         warehouse = f"gs://{gcs_bucket}/warehouse"
         catalog_sql = f"""
-            CREATE CATALOG polaris_catalog WITH (
-                'type'                       = 'iceberg',
-                'catalog-type'               = 'rest',
-                'uri'                        = '{polaris_uri}',
-                'warehouse'                  = '{warehouse}',
-                'token'                      = '{polaris_token}',
-                'rest.authorization.enabled' = 'true',
-                'rest.authorization.client-id'      = '{polaris_client_id}',
-                'rest.authorization.client-secret'  = '{polaris_client_secret}',
-                'rest.authorization.scope'          = 'PRINCIPAL_ROLE:ALL'
+            CREATE CATALOG nessie_catalog WITH (
+                'type'         = 'iceberg',
+                'catalog-impl' = 'org.apache.iceberg.nessie.NessieCatalog',
+                'uri'          = '{nessie_uri}',
+                'ref'          = 'main',
+                'warehouse'    = '{warehouse}'
             )
         """
     else:
@@ -86,16 +59,12 @@ def main():
         env.get_config().set("fs.s3a.secret.key", minio_secret_key)
         env.get_config().set("fs.s3a.path.style.access", "true")
         catalog_sql = f"""
-            CREATE CATALOG polaris_catalog WITH (
+            CREATE CATALOG nessie_catalog WITH (
                 'type'                   = 'iceberg',
-                'catalog-type'           = 'rest',
-                'uri'                    = '{polaris_uri}',
+                'catalog-impl'           = 'org.apache.iceberg.nessie.NessieCatalog',
+                'uri'                    = '{nessie_uri}',
+                'ref'                    = 'main',
                 'warehouse'              = '{warehouse}',
-                'token'                      = '{polaris_token}',
-                'rest.authorization.enabled'   = 'true',
-                'rest.authorization.client-id' = '{polaris_client_id}',
-                'rest.authorization.client-secret' = '{polaris_client_secret}',
-                'rest.authorization.scope'          = 'PRINCIPAL_ROLE:ALL',
                 'io-impl'                = 'org.apache.iceberg.aws.s3.S3FileIO',
                 's3.endpoint'            = '{minio_endpoint}',
                 's3.access-key-id'       = '{minio_access_key}',
@@ -106,7 +75,7 @@ def main():
         """
 
     env.execute_sql(catalog_sql)
-    env.use_catalog("polaris_catalog")
+    env.use_catalog("nessie_catalog")
 
     for db in ("bronze", "silver", "gold"):
         env.execute_sql(f"CREATE DATABASE IF NOT EXISTS {db}")
