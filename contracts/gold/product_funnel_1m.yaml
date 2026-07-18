@@ -8,7 +8,7 @@ info:
     Per-product event counts aggregated in 1-minute tumbling windows.
     Enables conversion funnel analysis at product granularity.
   layer: gold
-  source: iceberg://polaris/gold/product_funnel_1m
+  source: iceberg://nessie/gold/product_funnel_1m
   tags:
     - layer:gold
     - funnel

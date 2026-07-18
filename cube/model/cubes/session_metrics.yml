@@ -1,0 +1,62 @@
+cubes:
+  - name: session_metrics
+    sql_table: lakehouse.gold.session_metrics
+
+    dimensions:
+      - name: session_id
+        sql: session_id
+        type: string
+        primary_key: true
+
+      - name: user_id
+        sql: user_id
+        type: string
+
+      - name: session_start
+        sql: session_start
+        type: time
+
+      - name: session_end
+        sql: session_end
+        type: time
+
+      - name: converted
+        sql: converted
+        type: boolean
+
+      - name: session_date
+        sql: session_date
+        type: time
+
+    measures:
+      - name: count
+        type: count
+
+      - name: total_sessions
+        sql: session_id
+        type: count_distinct
+
+      - name: avg_session_duration_seconds
+        sql: session_duration_seconds
+        type: avg
+
+      - name: total_page_views
+        sql: page_views
+        type: sum
+
+      - name: total_add_to_carts
+        sql: add_to_carts
+        type: sum
+
+      - name: total_purchases
+        sql: purchases
+        type: sum
+
+      - name: converted_sessions
+        sql: "CASE WHEN converted THEN 1 ELSE 0 END"
+        type: sum
+
+      - name: conversion_rate
+        sql: "{converted_sessions} / NULLIF({count}, 0)"
+        type: number
+        format: percent

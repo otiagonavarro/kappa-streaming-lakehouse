@@ -1,0 +1,41 @@
+cubes:
+  - name: user_360
+    sql_table: lakehouse.gold.user_360
+
+    dimensions:
+      - name: user_id
+        sql: user_id
+        type: string
+        primary_key: true
+
+      - name: is_converted
+        sql: is_converted
+        type: boolean
+
+      - name: first_activity_date
+        sql: first_activity_date
+        type: time
+
+      - name: last_activity_date
+        sql: last_activity_date
+        type: time
+
+    measures:
+      - name: count
+        type: count
+
+      - name: total_sessions
+        sql: total_sessions
+        type: sum
+
+      - name: total_events
+        sql: total_events
+        type: sum
+
+      - name: total_purchases
+        sql: total_purchases
+        type: sum
+
+      - name: avg_session_duration_seconds
+        sql: avg_session_duration_seconds
+        type: avg

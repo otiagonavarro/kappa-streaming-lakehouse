@@ -2,9 +2,7 @@
 # Schema evolution demo: add campaign_id column to kappa.raw_events without rewriting files.
 set -euo pipefail
 
-POLARIS_URI=${POLARIS_URI:-http://localhost:8181/api/catalog}
-POLARIS_CLIENT_ID=${POLARIS_CLIENT_ID:-root}
-POLARIS_CLIENT_SECRET=${POLARIS_CLIENT_SECRET:-s3cr3t}
+NESSIE_URI=${NESSIE_URI:-http://localhost:19120/api/v1}
 POSTGRES_DSN=${POSTGRES_DSN:-postgresql://kappa:kappa@localhost:5432/kappa}
 
 echo "=== Kappa Architecture — Schema Evolution Demo ==="
@@ -15,7 +13,7 @@ python3 -c "
 from pyflink.table import EnvironmentSettings, TableEnvironment
 import os
 env = TableEnvironment.create(EnvironmentSettings.in_batch_mode())
-env.execute_sql(\"USE CATALOG polaris_catalog\")
+env.execute_sql(\"USE CATALOG nessie_catalog\")
 result = env.execute_sql(\"DESCRIBE kappa.raw_events\")
 result.print()
 "
@@ -30,7 +28,7 @@ echo "Step 3: Adding campaign_id column via Iceberg ALTER TABLE..."
 python3 -c "
 from pyflink.table import EnvironmentSettings, TableEnvironment
 env = TableEnvironment.create(EnvironmentSettings.in_batch_mode())
-env.execute_sql(\"USE CATALOG polaris_catalog\")
+env.execute_sql(\"USE CATALOG nessie_catalog\")
 env.execute_sql(\"ALTER TABLE kappa.raw_events ADD COLUMN campaign_id STRING\")
 print('Column added successfully.')
 "
@@ -40,7 +38,7 @@ echo "Step 4: Verify existing rows return NULL for campaign_id (no file rewrite)
 python3 -c "
 from pyflink.table import EnvironmentSettings, TableEnvironment
 env = TableEnvironment.create(EnvironmentSettings.in_batch_mode())
-env.execute_sql(\"USE CATALOG polaris_catalog\")
+env.execute_sql(\"USE CATALOG nessie_catalog\")
 result = env.execute_sql(\"SELECT campaign_id FROM kappa.raw_events LIMIT 5\")
 result.print()
 print('All values above should be NULL — no data files were rewritten.')

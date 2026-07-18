@@ -9,7 +9,7 @@ info:
     Invalid or malformed records are filtered out, timestamps are normalized,
     and metadata is enriched with derived fields.
   layer: silver
-  source: iceberg://polaris/bronze/raw_events
+  source: iceberg://nessie/bronze/raw_events
   tags:
     - layer:silver
     - validated

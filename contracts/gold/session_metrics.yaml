@@ -8,7 +8,7 @@ info:
     Per-session key performance indicators.
     Combines silver session boundaries with event-type breakdowns for analytics.
   layer: gold
-  source: iceberg://polaris/silver/user_sessions
+  source: iceberg://nessie/silver/user_sessions
   tags:
     - layer:gold
     - kpi

@@ -8,7 +8,7 @@ info:
     Customer 360 aggregated view: lifetime session count, total purchases,
     average session duration, first/last activity dates, conversion flag.
   layer: gold
-  source: iceberg://polaris/gold/session_metrics
+  source: iceberg://nessie/gold/session_metrics
   tags:
     - layer:gold
     - customer-360

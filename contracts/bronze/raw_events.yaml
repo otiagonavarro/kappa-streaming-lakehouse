@@ -9,7 +9,7 @@ info:
     This is the first touch point — data is accepted as-is with minimal validation.
   layer: bronze
   source: kafka://raw-events
-  sink: iceberg://polaris/bronze/raw_events
+  sink: iceberg://nessie/bronze/raw_events
   tags:
     - layer:bronze
     - immutable

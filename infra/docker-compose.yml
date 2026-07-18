@@ -69,23 +69,28 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-kappa-lake}
 
-  # ── Apache Polaris REST catalog ────────────────────────────────────────────
-  polaris:
-    image: apache/polaris:latest
+  # ── Project Nessie REST catalog ────────────────────────────────────────────
+  # Also exposes an Iceberg-REST-compatible endpoint (nessie.catalog.*) at
+  # /iceberg/main, consumed by Doris' Iceberg multi-catalog federation below.
+  nessie:
+    image: ghcr.io/projectnessie/nessie:0.108.2
     ports:
-      - "8181:8181"
-      - "8182:8182"
+      - "19120:19120"
     environment:
-      POLARIS_BOOTSTRAP_CREDENTIALS: default-realm,root,s3cr3t
-      POLARIS_REALM_CONTEXT_REALMS: default-realm
-      POLARIS_FEATURE_ALLOW_INSECURE_STORAGE_TYPES: "true"
-      POLARIS_SUPPORTED_CATALOG_STORAGE_TYPES: '[ "FILE", "S3", "GCS", "AZURE" ]'
-      POLARIS_READINESS_IGNORE_SEVERE_ISSUES: "true"
-      AWS_REGION: us-east-1
+      NESSIE_CATALOG_DEFAULT_WAREHOUSE: warehouse
+      NESSIE_CATALOG_WAREHOUSES_WAREHOUSE_LOCATION: s3://${MINIO_BUCKET:-kappa-lake}/warehouse
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_ENDPOINT: http://minio:9000/
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_REGION: us-east-1
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_PATH_STYLE_ACCESS: "true"
+      # urn:nessie-secret indirection for STATIC auth is unreliable in this
+      # image (matches a known upstream issue); use the AWS SDK's ambient
+      # credential chain instead, fed by the AWS_* env vars below.
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_AUTH_TYPE: APPLICATION_GLOBAL
       AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      AWS_REGION: us-east-1
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8182/q/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:19120/api/v1/config"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -157,7 +162,8 @@ services:
         jobmanager.rpc.address: jobmanager
         rest.address: jobmanager
         rest.port: 8081
-        taskmanager.numberOfTaskSlots: 4
+        taskmanager.numberOfTaskSlots: 16
+        taskmanager.memory.process.size: 4096m
         state.backend: filesystem
         state.checkpoints.dir: s3://flink-checkpoints/checkpoints
         s3.endpoint: ${MINIO_ENDPOINT:-http://minio:9000}
@@ -192,9 +198,7 @@ services:
       FLINK_JOBMANAGER_HOST: ${FLINK_JOBMANAGER_HOST:-jobmanager}
       FLINK_JOBMANAGER_PORT: ${FLINK_JOBMANAGER_PORT:-8081}
       KAFKA_BROKERS: ${KAFKA_BROKERS:-broker:9092}
-      POLARIS_URI: ${POLARIS_URI:-http://polaris:8181/api/catalog}
-      POLARIS_CLIENT_ID: ${POLARIS_CLIENT_ID:-root}
-      POLARIS_CLIENT_SECRET: ${POLARIS_CLIENT_SECRET:-s3cr3t}
+      NESSIE_URI: ${NESSIE_URI:-http://nessie:19120/api/v1}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
@@ -211,10 +215,121 @@ services:
         condition: service_started
       db-migrate:
         condition: service_completed_successfully
-      polaris:
+      nessie:
         condition: service_healthy
       broker:
         condition: service_healthy
+
+  # ── Apache Doris FE (federated query engine over the Iceberg lakehouse) ────
+  # Doris needs FE_SERVERS/BE_ADDR to carry a real, stable IP for its own
+  # internal gossip protocol, so FE/BE are pinned to static addresses on the
+  # default network instead of relying on Docker DNS for that handshake.
+  doris-fe:
+    image: apache/doris:fe-4.1.3
+    networks:
+      default:
+        ipv4_address: 172.28.0.240
+    environment:
+      FE_SERVERS: fe1:172.28.0.240:9010
+      FE_ID: "1"
+    ports:
+      - "8030:8030"
+      - "9030:9030"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8030/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # ── Apache Doris BE (storage/compute worker) ────────────────────────────────
+  doris-be:
+    image: apache/doris:be-4.1.3
+    networks:
+      default:
+        ipv4_address: 172.28.0.241
+    environment:
+      FE_SERVERS: fe1:172.28.0.240:9010
+      BE_ADDR: 172.28.0.241:9050
+    depends_on:
+      doris-fe:
+        condition: service_healthy
+
+  # ── Doris catalog bootstrap (init) ──────────────────────────────────────────
+  # Registers two Doris catalogs:
+  #   - "lakehouse": Iceberg REST federation over Nessie (bronze/silver/gold,
+  #     zero re-ingestion).
+  #   - "postgres": JDBC federation over the Postgres serving layer, so the
+  #     same session_metrics/product_funnel_1m/users/products/orders tables
+  #     that Flink upserts into Postgres are also queryable from Doris.
+  doris-init:
+    image: mysql:8.0
+    depends_on:
+      doris-fe:
+        condition: service_healthy
+      doris-be:
+        condition: service_started
+      nessie:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    entrypoint: >
+      /bin/sh -c "
+        until mysql -h doris-fe -P9030 -uroot -e 'SHOW BACKENDS\\G' 2>/dev/null | grep -q 'Alive: true'; do
+          echo 'Waiting for Doris BE to register...'; sleep 5;
+        done;
+        mysql -h doris-fe -P9030 -uroot -e \"
+          CREATE CATALOG IF NOT EXISTS lakehouse PROPERTIES (
+            'type' = 'iceberg',
+            'iceberg.catalog.type' = 'rest',
+            'iceberg.rest.uri' = 'http://nessie:19120/iceberg',
+            'warehouse' = 'warehouse',
+            's3.endpoint' = '${MINIO_ENDPOINT:-http://minio:9000}',
+            's3.region' = 'us-east-1',
+            's3.access_key' = '${MINIO_ACCESS_KEY:-minioadmin}',
+            's3.secret_key' = '${MINIO_SECRET_KEY:-minioadmin}',
+            's3.use_path_style' = 'true',
+            's3.path-style-access' = 'true',
+            'metadata_refresh_interval_sec' = '30'
+          );
+        \";
+        mysql -h doris-fe -P9030 -uroot -e \"
+          CREATE CATALOG IF NOT EXISTS postgres PROPERTIES (
+            'type' = 'jdbc',
+            'user' = '${POSTGRES_USER:-kappa}',
+            'password' = '${POSTGRES_PASSWORD:-kappa}',
+            'jdbc_url' = 'jdbc:postgresql://postgres:5432/${POSTGRES_DB:-kappa}',
+            'driver_url' = 'https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.3/postgresql-42.7.3.jar',
+            'driver_class' = 'org.postgresql.Driver'
+          );
+        \";
+        echo 'Doris lakehouse + postgres catalogs ready.';
+      "
+
+  # ── Cube.js semantic layer (BI API over Doris) ──────────────────────────────
+  cube:
+    image: cubejs/cube:latest
+    environment:
+      CUBEJS_DB_TYPE: mysql
+      CUBEJS_DB_HOST: doris-fe
+      CUBEJS_DB_PORT: "9030"
+      CUBEJS_DB_NAME: lakehouse.gold
+      CUBEJS_DB_USER: root
+      CUBEJS_DB_PASS: ""
+      CUBEJS_API_SECRET: ${CUBEJS_API_SECRET:-dev-secret-change-me}
+      CUBEJS_DEV_MODE: "true"
+    ports:
+      - "4000:4000"
+    volumes:
+      - ../cube/model:/cube/conf/model
+    depends_on:
+      doris-init:
+        condition: service_completed_successfully
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
 
 volumes:
   minio-data:

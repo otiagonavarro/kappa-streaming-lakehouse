@@ -2,9 +2,7 @@
 # Time-travel demo: capture a snapshot, ingest more data, then query the past snapshot via DuckDB.
 set -euo pipefail
 
-POLARIS_URI=${POLARIS_URI:-http://localhost:8181/api/catalog}
-POLARIS_CLIENT_ID=${POLARIS_CLIENT_ID:-root}
-POLARIS_CLIENT_SECRET=${POLARIS_CLIENT_SECRET:-s3cr3t}
+NESSIE_URI=${NESSIE_URI:-http://localhost:19120/api/v1}
 MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://localhost:9000}
 MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
 MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
