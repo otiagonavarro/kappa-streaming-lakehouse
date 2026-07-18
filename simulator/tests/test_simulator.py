@@ -1,15 +1,13 @@
-import json
 import sys
 from unittest.mock import MagicMock, patch
 
-import pytest
 from click.testing import CliRunner
 
 sys.path.insert(0, "src")
 
-from simulator.events import EventGenerator
-from simulator.main import cli
-from simulator.entities import CategoryPool, ProductPool, UserPool
+from simulator.events import EventGenerator  # noqa: E402  # pyright: ignore[reportMissingImports]
+from simulator.main import cli  # noqa: E402  # pyright: ignore[reportMissingImports]
+from simulator.entities import ProductPool  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 REQUIRED_FIELDS = {"event_id", "event_type", "user_id", "session_id", "product_id", "timestamp", "metadata"}
 VALID_TYPES = {"page_view", "add_to_cart", "purchase"}

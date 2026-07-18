@@ -1,11 +1,13 @@
-"""Shared config and catalog setup for all PyFlink jobs."""
+import json
 import os
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
-import yaml # type: ignore
-from pyflink.common import Configuration # type: ignore
-from pyflink.datastream import StreamExecutionEnvironment, CheckpointingMode # type: ignore
-from pyflink.table import StreamTableEnvironment # type: ignore
+import yaml  # type: ignore
+from pyflink.common import Configuration  # type: ignore
+from pyflink.datastream import StreamExecutionEnvironment, CheckpointingMode  # type: ignore
+from pyflink.table import StreamTableEnvironment  # type: ignore
 
 CONTRACTS_DIR = Path(__file__).resolve().parent.parent / "contracts"
 
@@ -104,6 +106,28 @@ def iceberg_sink_ddl_from_contract(contract: dict) -> str:
     """
 
 
+def get_polaris_token() -> str:
+    token_url = get_env("POLARIS_TOKEN_URL", "http://localhost:8181/api/catalog/v1/oauth/tokens")
+    client_id = get_env("POLARIS_CLIENT_ID", "root")
+    client_secret = get_env("POLARIS_CLIENT_SECRET", "s3cr3t")
+    data = urllib.parse.urlencode({
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "scope": "PRINCIPAL_ROLE:ALL",
+    }).encode()
+    req = urllib.request.Request(token_url, data=data, method="POST")
+    req.add_header("Content-Type", "application/x-www-form-urlencoded")
+    with urllib.request.urlopen(req) as resp:
+        body = json.loads(resp.read())
+    return body["access_token"]
+
+
+def create_databases(t_env: StreamTableEnvironment) -> None:
+    for db in ("bronze", "silver", "gold"):
+        t_env.execute_sql(f"CREATE DATABASE IF NOT EXISTS {db}")
+
+
 def build_env(checkpoint_interval_ms: int | None = None) -> tuple[StreamExecutionEnvironment, StreamTableEnvironment]:
     interval_ms = checkpoint_interval_ms or int(get_env("FLINK_CHECKPOINT_INTERVAL_MS", "30000"))
     storage_backend = get_env("STORAGE_BACKEND", "minio")
@@ -112,18 +136,23 @@ def build_env(checkpoint_interval_ms: int | None = None) -> tuple[StreamExecutio
     minio_secret_key = get_env("MINIO_SECRET_KEY", "minioadmin")
     minio_bucket = get_env("MINIO_BUCKET", "kappa-lake")
     gcs_bucket = get_env("GCS_BUCKET", "")
-    nessie_uri = get_env("NESSIE_URI", "http://localhost:19120/api/v1")
+    polaris_uri = get_env("POLARIS_URI", "http://localhost:8181/api/catalog")
+    polaris_token = get_polaris_token()
     config = Configuration()
 
     if storage_backend == "gcs":
         warehouse = f"gs://{gcs_bucket}/warehouse"
         catalog_sql = f"""
-            CREATE CATALOG nessie_catalog WITH (
-                'type'         = 'iceberg',
-                'catalog-impl' = 'org.apache.iceberg.nessie.NessieCatalog',
-                'uri'          = '{nessie_uri}',
-                'ref'          = 'main',
-                'warehouse'    = '{warehouse}'
+            CREATE CATALOG polaris_catalog WITH (
+                'type'                       = 'iceberg',
+                'catalog-type'               = 'rest',
+                'uri'                        = '{polaris_uri}',
+                'warehouse'                  = '{warehouse}',
+                'token'                      = '{polaris_token}',
+                'rest.authorization.enabled'       = 'true',
+                'rest.authorization.client-id'      = '{get_env("POLARIS_CLIENT_ID", "root")}',
+                'rest.authorization.client-secret'  = '{get_env("POLARIS_CLIENT_SECRET", "s3cr3t")}',
+                'rest.authorization.scope'          = 'PRINCIPAL_ROLE:ALL'
             )
         """
     else:
@@ -132,14 +161,17 @@ def build_env(checkpoint_interval_ms: int | None = None) -> tuple[StreamExecutio
         config.set_string("fs.s3a.access.key", minio_access_key)
         config.set_string("fs.s3a.secret.key", minio_secret_key)
         config.set_string("fs.s3a.path.style.access", "true")
-        # Iceberg 1.6+ removed catalog-type=nessie; use catalog-impl with explicit S3FileIO props
         catalog_sql = f"""
-            CREATE CATALOG nessie_catalog WITH (
+            CREATE CATALOG polaris_catalog WITH (
                 'type'                   = 'iceberg',
-                'catalog-impl'           = 'org.apache.iceberg.nessie.NessieCatalog',
-                'uri'                    = '{nessie_uri}',
-                'ref'                    = 'main',
+                'catalog-type'           = 'rest',
+                'uri'                    = '{polaris_uri}',
                 'warehouse'              = '{warehouse}',
+                'token'                      = '{polaris_token}',
+                'rest.authorization.enabled'   = 'true',
+                'rest.authorization.client-id' = '{get_env("POLARIS_CLIENT_ID", "root")}',
+                'rest.authorization.client-secret' = '{get_env("POLARIS_CLIENT_SECRET", "s3cr3t")}',
+                'rest.authorization.scope'          = 'PRINCIPAL_ROLE:ALL',
                 'io-impl'                = 'org.apache.iceberg.aws.s3.S3FileIO',
                 's3.endpoint'            = '{minio_endpoint}',
                 's3.access-key-id'       = '{minio_access_key}',
@@ -154,8 +186,7 @@ def build_env(checkpoint_interval_ms: int | None = None) -> tuple[StreamExecutio
 
     t_env = StreamTableEnvironment.create(env)
     t_env.execute_sql(catalog_sql)
-    t_env.use_catalog("nessie_catalog")
-    t_env.execute_sql("CREATE DATABASE IF NOT EXISTS kappa")
-    t_env.use_database("kappa")
+    t_env.use_catalog("polaris_catalog")
+    create_databases(t_env)
 
     return env, t_env

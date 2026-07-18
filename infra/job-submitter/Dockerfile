@@ -12,7 +12,6 @@ RUN pip3 install --no-cache-dir \
     "click>=8.1" \
     "pyyaml>=6.0"
 
-# Drop connector JARs into Flink's lib dir (this is what FLINK_HOME/lib resolves to at runtime)
 RUN curl -fsSL \
     "https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.0.2-1.18/flink-sql-connector-kafka-3.0.2-1.18.jar" \
     -o "/opt/flink/lib/flink-sql-connector-kafka-3.0.2-1.18.jar" \
@@ -40,9 +39,9 @@ WORKDIR /app
 
 COPY infra/job-submitter/submit_jobs.py .
 COPY flink-jobs/src/ ./jobs/
-COPY flink-jobs/contracts/ ./contracts/
+COPY contracts/ ./contracts/
 
-# Use system Flink's PyFlink (avoids bundled-JAR bloat from the pip package)
 ENV PYTHONPATH=/opt/flink/opt/python/pyflink.zip:/opt/flink/opt/python/py4j-0.10.9.7-src.zip:/app
+ENV CONTRACTS_DIR=/app/contracts
 
 CMD ["python3", "submit_jobs.py"]

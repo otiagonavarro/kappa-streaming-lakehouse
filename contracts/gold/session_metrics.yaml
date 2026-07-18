@@ -1,0 +1,83 @@
+dataContractSpecification: 1.1.0
+id: gold.session_metrics
+info:
+  title: Session KPIs
+  version: 1.0.0
+  owner: data-analytics
+  description: |
+    Per-session key performance indicators.
+    Combines silver session boundaries with event-type breakdowns for analytics.
+  layer: gold
+  source: iceberg://polaris/silver/user_sessions
+  tags:
+    - layer:gold
+    - kpi
+    - serving
+
+schema:
+  - name: session_id
+    type: STRING
+    logicalType: uuid
+    description: Unique session identifier
+    required: true
+    tags:
+      - governance:primary_key
+  - name: user_id
+    type: STRING
+    logicalType: user-identifier
+    description: User identifier
+    required: true
+    tags:
+      - governance:dimension
+  - name: session_start
+    type: TIMESTAMP(6)
+    logicalType: event-time
+    description: Session start timestamp
+    required: true
+  - name: session_end
+    type: TIMESTAMP(6)
+    logicalType: event-time
+    description: Session end timestamp
+    required: true
+  - name: session_duration_seconds
+    type: BIGINT
+    description: Difference between session_end and session_start in seconds
+    required: true
+  - name: event_count
+    type: BIGINT
+    description: Total number of events in the session
+    required: true
+  - name: page_views
+    type: BIGINT
+    description: Number of page_view events
+    required: true
+  - name: add_to_carts
+    type: BIGINT
+    description: Number of add_to_cart events
+    required: true
+  - name: purchases
+    type: BIGINT
+    description: Number of purchase events (conversion)
+    required: true
+  - name: converted
+    type: BOOLEAN
+    description: Whether the session had at least one purchase
+    required: true
+  - name: session_date
+    type: DATE
+    logicalType: partition-key
+    description: Partition key
+    required: true
+    tags:
+      - governance:partition_key
+
+partitioning:
+  - session_date
+
+quality:
+  - type: notNull
+    columns:
+      - session_id
+      - user_id
+  - type: custom
+    description: session_duration_seconds >= 0

@@ -1,0 +1,53 @@
+dataContractSpecification: 1.1.0
+id: gold.product_funnel_1m
+info:
+  title: Product Funnel (1-minute Windows)
+  version: 1.0.0
+  owner: data-analytics
+  description: |
+    Per-product event counts aggregated in 1-minute tumbling windows.
+    Enables conversion funnel analysis at product granularity.
+  layer: gold
+  source: iceberg://polaris/gold/product_funnel_1m
+  tags:
+    - layer:gold
+    - funnel
+    - serving
+
+schema:
+  - name: product_id
+    type: STRING
+    description: Product identifier
+    required: true
+    tags:
+      - governance:dimension
+  - name: window_start
+    type: TIMESTAMP(3)
+    logicalType: window-boundary
+    description: Start of the tumbling window
+    required: true
+  - name: window_end
+    type: TIMESTAMP(3)
+    logicalType: window-boundary
+    description: End of the tumbling window
+    required: true
+  - name: page_views
+    type: BIGINT
+    description: Count of page_view events for this product in the window
+    required: true
+  - name: add_to_carts
+    type: BIGINT
+    description: Count of add_to_cart events for this product in the window
+    required: true
+  - name: purchases
+    type: BIGINT
+    description: Count of purchase events for this product in the window
+    required: true
+
+quality:
+  - type: notNull
+    columns:
+      - product_id
+      - window_start
+  - type: custom
+    description: window_end > window_start

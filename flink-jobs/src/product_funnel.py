@@ -3,8 +3,9 @@ ProductFunnelJob: Kafka → 1-minute tumbling windows → PostgreSQL product_fun
 
 Counts page_view / add_to_cart / purchase per product per minute.
 """
-import click # type: ignore
+import click  # type: ignore
 from common import build_env, get_env
+from contracts.loader import ddl_columns
 
 
 @click.command()
@@ -21,7 +22,17 @@ def main(from_beginning: bool, window_minutes: int):
     pg_user, pg_password = creds.split(":", 1)
     pg_jdbc = f"jdbc:postgresql://{host_db}"
 
-    _, t_env = build_env()
+    env, t_env = build_env()
+
+    t_env.execute_sql(f"""
+        CREATE TABLE IF NOT EXISTS gold.product_funnel_1m (
+            {ddl_columns("gold", "product_funnel_1m")}
+        ) WITH (
+            'format-version' = '2',
+            'write.format.default' = 'parquet',
+            'write.parquet.compression-codec' = 'snappy'
+        )
+    """)
 
     t_env.execute_sql(f"""
         CREATE TEMPORARY TABLE kafka_events (
@@ -62,6 +73,19 @@ def main(from_beginning: bool, window_minutes: int):
             'sink.buffer-flush.max-rows' = '200',
             'sink.buffer-flush.interval' = '5s'
         )
+    """)
+
+    t_env.execute_sql(f"""
+        INSERT INTO gold.product_funnel_1m
+        SELECT
+            product_id,
+            TUMBLE_START(`timestamp`, INTERVAL '{window_minutes}' MINUTE) AS window_start,
+            TUMBLE_END(`timestamp`, INTERVAL '{window_minutes}' MINUTE) AS window_end,
+            COUNT(CASE WHEN event_type = 'page_view'   THEN 1 END) AS page_views,
+            COUNT(CASE WHEN event_type = 'add_to_cart' THEN 1 END) AS add_to_carts,
+            COUNT(CASE WHEN event_type = 'purchase'    THEN 1 END) AS purchases
+        FROM kafka_events
+        GROUP BY product_id, TUMBLE(`timestamp`, INTERVAL '{window_minutes}' MINUTE)
     """)
 
     t_env.execute_sql(f"""

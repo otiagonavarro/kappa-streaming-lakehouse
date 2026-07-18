@@ -1,0 +1,102 @@
+dataContractSpecification: 1.1.0
+id: silver.validated_events
+info:
+  title: Validated Clickstream Events
+  version: 1.0.0
+  owner: data-platform
+  description: |
+    Cleaned and validated events from the bronze layer.
+    Invalid or malformed records are filtered out, timestamps are normalized,
+    and metadata is enriched with derived fields.
+  layer: silver
+  source: iceberg://polaris/bronze/raw_events
+  tags:
+    - layer:silver
+    - validated
+    - enriched
+
+schema:
+  - name: event_id
+    type: STRING
+    logicalType: uuid
+    description: Unique event identifier (validated non-null)
+    required: true
+    tags:
+      - governance:primary_key
+    quality:
+      - type: notNull
+      - type: uniqueness
+  - name: event_type
+    type: STRING
+    description: Normalized event category
+    required: true
+    quality:
+      - type: enumeration
+        values:
+          - page_view
+          - add_to_cart
+          - purchase
+  - name: user_id
+    type: STRING
+    logicalType: user-identifier
+    description: Validated user ID (non-empty, sanitized)
+    required: true
+    tags:
+      - governance:dimension
+  - name: session_id
+    type: STRING
+    logicalType: uuid
+    description: Validated session ID
+    required: true
+  - name: product_id
+    type: STRING
+    description: Product identifier (null for page_view without product context)
+    required: false
+    tags:
+      - governance:dimension
+  - name: event_timestamp
+    type: TIMESTAMP(6)
+    logicalType: event-time
+    description: Normalized event timestamp (rejects timestamps in the future or >7 days old)
+    required: true
+    tags:
+      - governance:timestamp
+  - name: metadata
+    type: STRING
+    logicalType: json
+    description: Enriched metadata JSON
+    required: false
+  - name: event_date
+    type: DATE
+    logicalType: partition-key
+    description: Partition key derived from event_timestamp
+    required: true
+    tags:
+      - governance:partition_key
+  - name: page_url
+    type: STRING
+    description: Extracted page URL from metadata JSON
+    required: false
+  - name: referrer
+    type: STRING
+    description: Extracted referrer from metadata JSON
+    required: false
+  - name: ingestion_ts
+    type: TIMESTAMP(3)
+    logicalType: processing-time
+    description: Wall-clock time when the event was processed by the silver layer
+    required: true
+
+partitioning:
+  - event_date
+
+quality:
+  - type: notNull
+    columns:
+      - event_id
+      - event_type
+      - user_id
+      - session_id
+      - event_timestamp
+  - type: freshness
+    interval: 10m

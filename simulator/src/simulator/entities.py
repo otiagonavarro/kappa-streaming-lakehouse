@@ -5,7 +5,7 @@ with realistic metadata (names, emails, cities, prices, etc.).
 """
 import random
 from datetime import datetime, timedelta, timezone
-from faker import Faker # type: ignore
+from faker import Faker  # type: ignore
 
 
 CATEGORIES = [

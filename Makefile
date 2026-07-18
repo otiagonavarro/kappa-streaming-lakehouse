@@ -1,4 +1,4 @@
-.PHONY: up down check reprocess logs sim-start sim-stop
+.PHONY: up down check reprocess logs sim-start sim-stop submit-jobs jobs-status
 
 up:
 	cp -n .env.example .env 2>/dev/null || true

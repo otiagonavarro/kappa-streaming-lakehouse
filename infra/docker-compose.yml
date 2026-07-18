@@ -69,13 +69,23 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-kappa-lake}
 
-  # ── Nessie REST catalog ───────────────────────────────────────────────────
-  nessie:
-    image: projectnessie/nessie:0.76.6
+  # ── Apache Polaris REST catalog ────────────────────────────────────────────
+  polaris:
+    image: apache/polaris:latest
     ports:
-      - "19120:19120"
+      - "8181:8181"
+      - "8182:8182"
+    environment:
+      POLARIS_BOOTSTRAP_CREDENTIALS: default-realm,root,s3cr3t
+      POLARIS_REALM_CONTEXT_REALMS: default-realm
+      POLARIS_FEATURE_ALLOW_INSECURE_STORAGE_TYPES: "true"
+      POLARIS_SUPPORTED_CATALOG_STORAGE_TYPES: '[ "FILE", "S3", "GCS", "AZURE" ]'
+      POLARIS_READINESS_IGNORE_SEVERE_ISSUES: "true"
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-minioadmin}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:19120/api/v1/config"]
+      test: ["CMD", "curl", "-f", "http://localhost:8182/q/health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -182,7 +192,9 @@ services:
       FLINK_JOBMANAGER_HOST: ${FLINK_JOBMANAGER_HOST:-jobmanager}
       FLINK_JOBMANAGER_PORT: ${FLINK_JOBMANAGER_PORT:-8081}
       KAFKA_BROKERS: ${KAFKA_BROKERS:-broker:9092}
-      NESSIE_URI: ${NESSIE_URI:-http://nessie:19120/api/v1}
+      POLARIS_URI: ${POLARIS_URI:-http://polaris:8181/api/catalog}
+      POLARIS_CLIENT_ID: ${POLARIS_CLIENT_ID:-root}
+      POLARIS_CLIENT_SECRET: ${POLARIS_CLIENT_SECRET:-s3cr3t}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
@@ -199,7 +211,7 @@ services:
         condition: service_started
       db-migrate:
         condition: service_completed_successfully
-      nessie:
+      polaris:
         condition: service_healthy
       broker:
         condition: service_healthy

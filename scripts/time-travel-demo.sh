@@ -2,7 +2,9 @@
 # Time-travel demo: capture a snapshot, ingest more data, then query the past snapshot via DuckDB.
 set -euo pipefail
 
-NESSIE_URI=${NESSIE_URI:-http://localhost:19120/api/v1}
+POLARIS_URI=${POLARIS_URI:-http://localhost:8181/api/catalog}
+POLARIS_CLIENT_ID=${POLARIS_CLIENT_ID:-root}
+POLARIS_CLIENT_SECRET=${POLARIS_CLIENT_SECRET:-s3cr3t}
 MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://localhost:9000}
 MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
 MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
@@ -10,12 +12,28 @@ MINIO_BUCKET=${MINIO_BUCKET:-kappa-lake}
 
 echo "=== Kappa Architecture — Time Travel Demo ==="
 
-# 1. Capture current snapshot ID via Nessie API
+# 1. Capture current snapshot ID from Iceberg metadata
 echo ""
 echo "Step 1: Capturing current Iceberg snapshot ID..."
-SNAPSHOT_RESPONSE=$(curl -s "${NESSIE_URI}/trees/main")
-COMMIT_HASH=$(echo "$SNAPSHOT_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('hash','unknown'))")
-echo "Current Nessie commit: ${COMMIT_HASH}"
+SNAPSHOT_ID=$(python3 -c "
+import duckdb, os
+con = duckdb.connect()
+con.execute(\"INSTALL iceberg; LOAD iceberg;\")
+con.execute(\"INSTALL httpfs; LOAD httpfs;\")
+con.execute(\"SET s3_endpoint='${MINIO_ENDPOINT}'; SET s3_access_key_id='${MINIO_ACCESS_KEY}'; SET s3_secret_access_key='${MINIO_SECRET_KEY}'; SET s3_url_style='path';\")
+import subprocess, json
+result = subprocess.run(
+    ['python3', 'scripts/get-iceberg-metadata-path.py', 'raw_events'],
+    capture_output=True, text=True
+)
+metadata_path = result.stdout.strip()
+if metadata_path:
+    sid = con.execute(f\"SELECT snapshot_id FROM iceberg_scan('{metadata_path}') ORDER BY commit_at DESC LIMIT 1\").fetchone()
+    print(sid[0] if sid else 'unknown')
+else:
+    print('unknown')
+")
+echo "Current Iceberg snapshot ID: ${SNAPSHOT_ID}"
 
 # 2. Count rows at this snapshot
 echo ""
@@ -56,7 +74,7 @@ echo "  (Check Flink UI at http://localhost:8081 or query Iceberg directly)"
 # 5. Time-travel query using DuckDB at the captured snapshot
 echo ""
 echo "Step 5: Querying Iceberg as of snapshot (before ingestion)..."
-echo "  Nessie commit reference: ${COMMIT_HASH}"
+echo "  Iceberg snapshot ID: ${SNAPSHOT_ID}"
 echo ""
 echo "  DuckDB time-travel query:"
 echo "  SELECT COUNT(*) FROM iceberg_scan('<metadata>', version = '<snapshot_id>');"

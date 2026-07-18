@@ -1,3 +1,4 @@
+<!-- markdownlint-disable -->
 # Flink Jobs — DAG Reference
 
 Five PyFlink jobs implement the Kappa pipeline. Three read from `raw-events` (clickstream), two read from `entity-updates` (CDC dimension/order data).
