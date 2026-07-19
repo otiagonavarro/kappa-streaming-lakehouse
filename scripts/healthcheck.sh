@@ -28,7 +28,7 @@ echo ""
 
 # 1. Kafka topic exists
 check "Kafka topic 'raw-events' exists" \
-    "docker compose -f infra/docker-compose.yml exec -T broker rpk topic list | grep -q raw-events"
+    "docker compose -f infra/compose/docker-compose.yml exec -T broker rpk topic list | grep -q raw-events"
 
 # 2. Flink JobManager reachable
 check "Flink JobManager reachable" \

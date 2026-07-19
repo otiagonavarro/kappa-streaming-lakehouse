@@ -78,7 +78,7 @@ make up
 make check
 
 # 3. Consulte a camada de serving
-psql postgresql://kappa:kappa@localhost:5432/kappa -f queries/top_converting_products.sql
+psql postgresql://kappa:kappa@localhost:5432/kappa -f examples/queries/top_converting_products.sql
 ```
 
 Abra a Flink Web UI em **<http://localhost:8081>** para ver os jobs e DAGs em execução.
@@ -120,7 +120,7 @@ Abra o console do MinIO em **<http://localhost:9001>** (minioadmin / minioadmin)
 
 ## Data Contracts
 
-O job `raw_event_ingestion` é orientado por um contrato YAML no formato [ODCS](https://bitol-io.github.io/open-data-contract-standard/) (Open Data Contract Standard) em [`flink-jobs/contracts/raw_events.contract.yaml`](flink-jobs/contracts/raw_events.contract.yaml), em vez de DDL SQL hardcoded.
+O job `raw_event_ingestion` é orientado por um contrato YAML no formato [ODCS](https://bitol-io.github.io/open-data-contract-standard/) (Open Data Contract Standard) em [`services/flink-jobs/contracts/raw_events.contract.yaml`](services/flink-jobs/contracts/raw_events.contract.yaml), em vez de DDL SQL hardcoded.
 
 O contrato é o ponto único de contato entre o tópico Kafka `raw-events` e a tabela Iceberg `kappa.raw_events` — ele declara:
 
@@ -128,13 +128,13 @@ O contrato é o ponto único de contato entre o tópico Kafka `raw-events` e a t
 - **`schema`** — nomes de colunas, tipos, nullability e a chave de partição
 - **`customProperties`** — config a nível de job (modo de checkpointing, intervalo de checkpoint)
 
-`flink-jobs/src/common.py` carrega o contrato em runtime (`load_contract`) e monta o DDL da fonte Kafka e do sink Iceberg a partir dele (`kafka_source_ddl_from_contract`, `iceberg_sink_ddl_from_contract`) — mudar o tópico, o schema da tabela ou as propriedades de storage exige só editar o YAML, não o código do job.
+`services/flink-jobs/src/common.py` carrega o contrato em runtime (`load_contract`) e monta o DDL da fonte Kafka e do sink Iceberg a partir dele (`kafka_source_ddl_from_contract`, `iceberg_sink_ddl_from_contract`) — mudar o tópico, o schema da tabela ou as propriedades de storage exige só editar o YAML, não o código do job.
 
 ---
 
 ## Trade-offs
 
-> Análise completa: [docs/trade-offs.md](docs/trade-offs.md)
+> Análise completa: [docs/tradeoffs.md](docs/tradeoffs.md)
 
 | Aspecto | Escolha | Motivo |
 |---------|--------|-----|
@@ -201,23 +201,36 @@ Após o reprocessamento, a contagem de linhas será idêntica à execução orig
 
 ```
 kappa-streaming-lakehouse/
-├── flink-jobs/
-│   ├── contracts/           # Data contracts ODCS (YAML)
-│   │   └── raw_events.contract.yaml
-│   └── src/                 # Jobs de streaming PyFlink
-│       ├── common.py        # Config de ambiente compartilhada + setup de catálogo + loader de contrato
-│       ├── raw_event_ingestion.py
-│       ├── session_aggregation.py
-│       └── product_funnel.py
-├── simulator/              # Simulador de eventos em Python
-│   └── src/simulator/
-│       ├── events.py       # Geradores de eventos (page_view, add_to_cart, purchase)
-│       └── main.py         # CLI com Click
-├── db/migrations/          # Migrações SQL Flyway
-├── infra/                  # Docker Compose + job submitter
-│   ├── docker-compose.yml
-│   └── job-submitter/
-├── queries/                # Exemplos de SQL analítico
-├── scripts/                # Scripts de demo + operações
-└── docs/                   # Documentação de arquitetura
+├── .github/workflows/       # CI (lint + testes)
+├── rfcs/                   # RFC-0000..RFC-0010, o registro de design
+├── adr/                    # Registros de decisão arquitetural
+├── diagrams/                # Fontes de diagramas avulsos
+├── docs/                   # Trade-offs, runbook, playbook, troubleshooting, FAQ
+├── examples/
+│   └── queries/            # Exemplos de SQL analítico
+├── services/
+│   ├── flink-jobs/
+│   │   ├── contracts/       # Data contracts ODCS (YAML)
+│   │   │   └── raw_events.contract.yaml
+│   │   └── src/             # Jobs de streaming PyFlink
+│   │       ├── common.py    # Config de ambiente compartilhada + setup de catálogo + loader de contrato
+│   │       ├── raw_event_ingestion.py
+│   │       ├── session_aggregation.py
+│   │       └── product_funnel.py
+│   ├── simulator/          # Simulador de eventos em Python
+│   │   └── src/simulator/
+│   │       ├── events.py   # Geradores de eventos (page_view, add_to_cart, purchase)
+│   │       └── main.py     # CLI com Click
+│   ├── cube/model/          # Modelos da camada semântica Cube.js
+│   └── db/migrations/       # Migrações SQL Flyway
+├── infra/
+│   ├── compose/
+│   │   └── docker-compose.yml
+│   ├── job-submitter/
+│   ├── terraform/           # (vazio — sem IaC ainda)
+│   └── docker/               # (vazio — sem Dockerfiles avulsos ainda)
+├── tests/
+│   └── simulator/           # Testes unitários do simulador
+├── scripts/                 # Scripts de demo + operações
+└── LICENSE
 ```

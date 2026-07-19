@@ -155,19 +155,19 @@ All jobs accept a `--from-beginning` flag to replay from Kafka offset 0:
 
 ```bash
 # Run inside the Flink cluster container
-docker compose -f infra/docker-compose.yml exec jobmanager \
+docker compose -f infra/compose/docker-compose.yml exec jobmanager \
     python3 /opt/jobs/raw_event_ingestion.py --from-beginning
 
-docker compose -f infra/docker-compose.yml exec jobmanager \
+docker compose -f infra/compose/docker-compose.yml exec jobmanager \
     python3 /opt/jobs/session_aggregation.py --from-beginning --session-gap-minutes 30
 
-docker compose -f infra/docker-compose.yml exec jobmanager \
+docker compose -f infra/compose/docker-compose.yml exec jobmanager \
     python3 /opt/jobs/product_funnel.py --from-beginning --window-minutes 1
 
-docker compose -f infra/docker-compose.yml exec jobmanager \
+docker compose -f infra/compose/docker-compose.yml exec jobmanager \
     python3 /opt/jobs/entity_sync.py --from-beginning
 
-docker compose -f infra/docker-compose.yml exec jobmanager \
+docker compose -f infra/compose/docker-compose.yml exec jobmanager \
     python3 /opt/jobs/order_ingestion.py --from-beginning
 ```
 

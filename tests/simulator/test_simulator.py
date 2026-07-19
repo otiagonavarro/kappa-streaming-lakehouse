@@ -1,9 +1,10 @@
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
-sys.path.insert(0, "src")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "services", "simulator", "src"))
 
 from simulator.events import EventGenerator  # noqa: E402  # pyright: ignore[reportMissingImports]
 from simulator.main import cli  # noqa: E402  # pyright: ignore[reportMissingImports]

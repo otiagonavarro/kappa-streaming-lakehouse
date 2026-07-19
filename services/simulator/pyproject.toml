@@ -19,4 +19,4 @@ simulator = "simulator.main:cli"
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["../../tests/simulator"]

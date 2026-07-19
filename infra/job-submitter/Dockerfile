@@ -38,7 +38,7 @@ RUN curl -fsSL \
 WORKDIR /app
 
 COPY infra/job-submitter/submit_jobs.py .
-COPY flink-jobs/src/ ./jobs/
+COPY services/flink-jobs/src/ ./jobs/
 COPY contracts/ ./contracts/
 
 ENV PYTHONPATH=/opt/flink/opt/python/pyflink.zip:/opt/flink/opt/python/py4j-0.10.9.7-src.zip:/app

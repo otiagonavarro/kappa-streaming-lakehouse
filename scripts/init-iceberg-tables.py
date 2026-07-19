@@ -6,7 +6,7 @@ Schemas are driven by ODCS contracts in contracts/.
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "flink-jobs", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "services", "flink-jobs", "src"))
 
 from pyflink.table import EnvironmentSettings, TableEnvironment  # noqa: E402
 from contracts.loader import ddl_columns, partition_spec  # noqa: E402  # pyright: ignore[reportMissingImports]

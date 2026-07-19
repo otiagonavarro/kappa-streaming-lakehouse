@@ -1,7 +1,7 @@
 # Data contract for the raw_event_ingestion PyFlink job.
 # Format: Open Data Contract Standard (ODCS) v3.0.0 — https://bitol-io.github.io/open-data-contract-standard/
 #
-# This file is the single source of truth read at runtime by flink-jobs/src/raw_event_ingestion.py
+# This file is the single source of truth read at runtime by services/flink-jobs/src/raw_event_ingestion.py
 # (via common.load_contract). Changing the Kafka topic, table name, columns, or storage
 # properties here changes the job's behavior — no code edit required for schema/config changes.
 apiVersion: v3.0.0
@@ -100,7 +100,7 @@ schema:
 
 customProperties:
   - property: flink.job.entrypoint
-    value: flink-jobs/src/raw_event_ingestion.py
+    value: services/flink-jobs/src/raw_event_ingestion.py
   - property: flink.job.checkpointing_mode
     value: EXACTLY_ONCE
   - property: flink.job.checkpoint_interval_ms.env

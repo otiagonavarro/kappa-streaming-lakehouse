@@ -60,7 +60,7 @@ echo "Rows before: ${BEFORE_COUNT}"
 # 3. Ingest 500 more events via simulator
 echo ""
 echo "Step 3: Ingesting 500 more events..."
-docker compose -f infra/docker-compose.yml run --rm simulator simulator --count 500 --rate 50
+docker compose -f infra/compose/docker-compose.yml run --rm simulator simulator --count 500 --rate 50
 echo "Waiting 20s for Flink to commit batch..."
 sleep 20
 
@@ -77,6 +77,6 @@ echo ""
 echo "  DuckDB time-travel query:"
 echo "  SELECT COUNT(*) FROM iceberg_scan('<metadata>', version = '<snapshot_id>');"
 echo ""
-echo "  See docs/trade-offs.md for full time-travel query examples."
+echo "  See docs/tradeoffs.md for full time-travel query examples."
 echo ""
 echo "=== Demo complete ==="

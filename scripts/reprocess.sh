@@ -30,14 +30,14 @@ echo ""
 echo "Step 3: Dropping all Iceberg tables across layers..."
 python3 -c "
 import sys, os
-sys.path.insert(0, 'flink-jobs/src')
+sys.path.insert(0, 'services/flink-jobs/src')
 from contracts.loader import load_contract, ddl_columns, partition_spec
 " 2>/dev/null || true
 echo "  Tables will be recreated by the Flink jobs on startup."
 
 echo ""
 echo "Step 4: Restarting jobs from Kafka offset 0..."
-docker compose -f infra/docker-compose.yml run --rm job-submitter
+docker compose -f infra/compose/docker-compose.yml run --rm job-submitter
 echo "  Jobs resubmitted."
 
 echo ""

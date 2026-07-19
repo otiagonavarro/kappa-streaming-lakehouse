@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [services/simulator, services/flink-jobs]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install ruff
+      - name: ruff check (advisory)
+        # This is the first CI pass over a codebase that predates linting.
+        # continue-on-error until the codebase is baselined clean, then remove it
+        # (see RFC-0010 roadmap).
+        continue-on-error: true
+        run: ruff check ${{ matrix.package }}/src
+
+  test-simulator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install -e services/simulator pytest pytest-cov
+      - name: Run tests with coverage
+        # No coverage baseline has been measured yet, so this reports coverage
+        # without a hard gate. Once a real baseline exists, add
+        # --cov-fail-under=70 per CONTRIBUTING.md's quality-gate floor.
+        run: pytest --cov=services/simulator/src --cov-report=term-missing tests/simulator
+
+  test-flink-jobs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install -e services/flink-jobs
+      - name: No test suite yet
+        # flink-jobs has zero automated tests today (see docs/compliance-gap-report.md
+        # and RFC-0010 roadmap). This step is a placeholder so CI visibly tracks the
+        # gap instead of silently skipping it.
+        run: echo "flink-jobs has no automated tests yet — tracked in RFC-0010 roadmap"

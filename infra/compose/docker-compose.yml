@@ -120,12 +120,12 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ../db/migrations:/flyway/sql
+      - ../../services/db/migrations:/flyway/sql
 
   # ── Flink JobManager ──────────────────────────────────────────────────────
   jobmanager:
     build:
-      context: ..
+      context: ../..
       dockerfile: infra/job-submitter/Dockerfile
     command: jobmanager
     environment:
@@ -154,7 +154,7 @@ services:
   # ── Flink TaskManager ─────────────────────────────────────────────────────
   taskmanager:
     build:
-      context: ..
+      context: ../..
       dockerfile: infra/job-submitter/Dockerfile
     command: taskmanager
     environment:
@@ -178,7 +178,7 @@ services:
   # ── Event Simulator ───────────────────────────────────────────────────────
   simulator:
     build:
-      context: ../simulator
+      context: ../../services/simulator
       dockerfile: Dockerfile
     environment:
       KAFKA_BROKERS: ${KAFKA_BROKERS:-broker:9092}
@@ -192,7 +192,7 @@ services:
   # ── Job Submitter (init) ──────────────────────────────────────────────────
   job-submitter:
     build:
-      context: ..
+      context: ../..
       dockerfile: infra/job-submitter/Dockerfile
     environment:
       FLINK_JOBMANAGER_HOST: ${FLINK_JOBMANAGER_HOST:-jobmanager}
@@ -320,7 +320,7 @@ services:
     ports:
       - "4000:4000"
     volumes:
-      - ../cube/model:/cube/conf/model
+      - ../../services/cube/model:/cube/conf/model
     depends_on:
       doris-init:
         condition: service_completed_successfully
