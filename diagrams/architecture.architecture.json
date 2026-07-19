@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Kappa Streaming Lakehouse — Architecture",
+    "subtitle": "Kafka → Flink → Iceberg (bronze/silver/gold) + PostgreSQL, federated by Doris + Cube.js",
+    "output": "architecture.html"
+  },
+  "components": [
+    { "id": "simulator", "type": "external", "label": "Event Simulator", "sublabel": "Python + Faker", "pos": [40, 300], "size": [130, 64] },
+    { "id": "broker", "type": "messagebus", "label": "Kafka (Redpanda)", "sublabel": "raw-events · entity-updates", "pos": [230, 300], "size": [150, 64] },
+    { "id": "jobsubmitter", "type": "backend", "label": "Job Submitter", "sublabel": "init container", "pos": [440, 110], "size": [140, 60] },
+    { "id": "flink", "type": "backend", "label": "Apache Flink", "sublabel": "PyFlink 1.18 · JM + TM", "pos": [440, 300], "size": [140, 64] },
+    { "id": "flyway", "type": "backend", "label": "Flyway", "sublabel": "SQL migrations", "pos": [440, 480], "size": [140, 60] },
+    { "id": "nessie", "type": "database", "label": "Nessie Catalog", "sublabel": "REST · git-style branching", "pos": [670, 110], "size": [150, 60] },
+    { "id": "lakehouse", "type": "cloud", "label": "Iceberg Tables", "sublabel": "bronze · silver · gold (MinIO/GCS)", "pos": [670, 300], "size": [150, 64] },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "serving layer", "pos": [670, 480], "size": [150, 60] },
+    { "id": "doris", "type": "backend", "label": "Apache Doris", "sublabel": "FE + BE federation", "pos": [900, 300], "size": [140, 64] },
+    { "id": "cube", "type": "backend", "label": "Cube.js", "sublabel": "semantic layer / API", "pos": [1110, 300], "size": [140, 64] },
+    { "id": "bi", "type": "external", "label": "Analytics / BI", "sublabel": "DuckDB · psql · REST", "pos": [1320, 300], "size": [140, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Streaming Compute", "wraps": ["jobsubmitter", "flink"] },
+    { "kind": "region", "label": "Lakehouse Catalog + Storage", "wraps": ["nessie", "lakehouse"] }
+  ],
+  "connections": [
+    { "from": "simulator", "to": "broker", "label": "page_view · add_to_cart · purchase", "variant": "emphasis", "labelDy": 58 },
+    { "from": "jobsubmitter", "to": "flink", "label": "submits 5 PyFlink jobs", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "from": "broker", "to": "flink", "label": "raw-events / entity-updates", "variant": "emphasis", "labelDy": 62 },
+    { "from": "flink", "to": "lakehouse", "label": "bronze → silver → gold (exactly-once)", "variant": "emphasis", "labelDy": 61 },
+    { "from": "flink", "to": "postgres", "label": "upsert gold aggregates", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "from": "nessie", "to": "lakehouse", "label": "catalog metadata", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "from": "flyway", "to": "postgres", "label": "schema migrations", "variant": "dashed", "labelDy": 54 },
+    { "from": "lakehouse", "to": "doris", "label": "TYPE=iceberg (zero re-ingestion)", "variant": "emphasis", "labelDy": 62 },
+    { "from": "postgres", "to": "doris", "label": "TYPE=jdbc", "variant": "default", "fromSide": "top", "toSide": "bottom" },
+    { "from": "doris", "to": "cube", "label": "MySQL protocol", "variant": "emphasis", "labelDy": 56 },
+    { "from": "cube", "to": "bi", "label": "REST / SQL API", "variant": "emphasis", "labelDy": 54 },
+    { "from": "lakehouse", "to": "bi", "label": "time-travel DuckDB queries", "variant": "dashed", "fromSide": "top", "toSide": "top" },
+    { "from": "postgres", "to": "bi", "label": "sub-10ms psql queries", "variant": "dashed", "fromSide": "bottom", "toSide": "bottom" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Scope",
+      "items": [
+        "Kappa architecture: one streaming pipeline, no separate batch layer",
+        "Docker Compose stack of 13 services on one bridged network",
+        "Local dev backs onto MinIO; STORAGE_BACKEND=gcs switches to GCS with no code change"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Core Components",
+      "items": [
+        "Flink (PyFlink 1.18) runs 5 streaming jobs driven by ODCS data contracts",
+        "Nessie gives the Iceberg catalog git-style branching and time travel",
+        "Doris federates the Iceberg lakehouse and Postgres serving layer in one SQL engine"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Primary Path",
+      "items": [
+        "Simulator → Kafka → Flink → Iceberg bronze/silver/gold (exactly-once)",
+        "Flink also upserts gold aggregates into Postgres for sub-10ms serving",
+        "Doris → Cube.js exposes both stores through one semantic API to BI"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "User Session Lifecycle",
+    "subtitle": "From raw event ingestion to gold session KPIs and the User 360 rollup",
+    "output": "lifecycle.html"
+  },
+  "lanes": [
+    { "id": "main", "label": "Session phases" },
+    { "id": "events", "label": "Gap watch + validation" },
+    { "id": "terminal", "label": "Terminal outcomes" }
+  ],
+  "states": [
+    { "id": "ingested", "type": "start", "label": "Event Ingested", "sublabel": "bronze.raw_events", "lane": "main", "col": 0, "step": "01" },
+    { "id": "validated", "type": "active", "label": "Validated", "sublabel": "silver.validated_events", "lane": "main", "col": 1, "step": "02" },
+    { "id": "session_open", "type": "active", "label": "Session Open", "sublabel": "user_id + session_id seen", "lane": "main", "col": 2, "step": "03" },
+    { "id": "session_closing", "type": "decision", "label": "Session Closing", "sublabel": "gap timeout fires", "lane": "main", "col": 3, "step": "04" },
+    { "id": "aggregated", "type": "active", "label": "Metrics Aggregated", "sublabel": "gold.session_metrics", "lane": "main", "col": 4, "step": "05" },
+    { "id": "awaiting", "type": "waiting", "label": "Awaiting Next Event", "sublabel": "30m inactivity gap", "lane": "events", "col": 0 },
+    { "id": "invalid", "type": "failure", "label": "Validation Failed", "sublabel": "stale or malformed", "lane": "events", "col": 1 },
+    { "id": "discarded", "type": "failure", "label": "Discarded", "sublabel": "not persisted to silver", "lane": "terminal", "col": 0 },
+    { "id": "metrics_written", "type": "success", "label": "Metrics Written", "sublabel": "Iceberg + Postgres upsert", "lane": "terminal", "col": 1 },
+    { "id": "user360_updated", "type": "success", "label": "User 360 Updated", "sublabel": "lifetime rollup", "lane": "terminal", "col": 2 }
+  ],
+  "transitions": [
+    { "from": "ingested", "to": "validated", "variant": "emphasis" },
+    { "from": "validated", "to": "session_open", "variant": "emphasis" },
+    { "from": "validated", "to": "invalid", "label": "quality check fails", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "invalid", "to": "discarded", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "session_open", "to": "awaiting", "variant": "default", "fromSide": "bottom", "toSide": "top", "route": "straight" },
+    { "from": "awaiting", "to": "session_open", "label": "new event", "variant": "default", "fromSide": "left", "toSide": "bottom", "route": "drop" },
+    { "from": "awaiting", "to": "session_closing", "label": "30m gap timeout", "variant": "emphasis", "fromSide": "right", "toSide": "bottom", "route": "drop" },
+    { "from": "session_closing", "to": "aggregated", "variant": "emphasis" },
+    { "from": "aggregated", "to": "metrics_written", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "metrics_written", "to": "user360_updated", "variant": "dashed", "fromSide": "right", "toSide": "left" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Main Path",
+      "items": [
+        "Five ordered phases carry one session from ingestion to gold aggregation",
+        "The 30-minute inactivity gap is what actually closes a session, not a fixed timer",
+        "Completion lands as a phase, not a detached side box"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Gap Watch + Validation",
+      "items": [
+        "A session stays open and loops back on every new event inside the 30m window",
+        "Quality checks (notNull, enumeration, freshness) can reject an event before it reaches silver",
+        "Only the gap timeout — not a page unload — triggers session close"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Terminal Outcomes",
+      "items": [
+        "Discarded events never reach silver.validated_events or count toward any KPI",
+        "Session Metrics Written is the durable exit for every closed session",
+        "User 360 Updated is a downstream batch rollup over gold.session_metrics, not a per-session exit"
+      ]
+    }
+  ]
+}

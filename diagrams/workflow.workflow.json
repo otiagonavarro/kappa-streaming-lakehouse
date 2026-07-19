@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Stack Bootstrap & Reprocessing Runbook",
+    "subtitle": "make up → healthchecks → migrate → submit jobs → federation ready, with make reprocess as the exception path",
+    "output": "workflow.html"
+  },
+  "lanes": [
+    { "id": "dev", "label": "Developer" },
+    { "id": "compose", "label": "Docker Compose" },
+    { "id": "federation", "label": "Doris / Cube.js" },
+    { "id": "submitter", "label": "Job Submitter" },
+    { "id": "exceptions", "label": "Reprocess Runbook", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "bootstrap", "label": "Bootstrap", "fromCol": 0, "toCol": 1 },
+    { "id": "streaming", "label": "Streaming online", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "serving", "label": "Jobs + federation ready", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "reprocess_group", "label": "make reprocess (drop + replay from offset 0)", "lane": "exceptions", "fromCol": 1, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": ["dev_up", "compose_up", "migrate", "flink_ready", "submit_jobs", "monitor"],
+  "nodes": [
+    { "id": "dev_up", "lane": "dev", "col": 0, "type": "external", "label": "Developer", "sublabel": "make up" },
+    { "id": "compose_up", "lane": "compose", "col": 0, "type": "cloud", "label": "Compose Up", "sublabel": "broker+minio+pg", "tag": "healthchecks" },
+    { "id": "migrate", "lane": "compose", "col": 2, "type": "database", "label": "Flyway Migrate", "sublabel": "V1..V6 SQL" },
+    { "id": "flink_ready", "lane": "compose", "col": 3, "type": "backend", "label": "Flink Cluster", "sublabel": "JM + TM healthy" },
+    { "id": "doris_init", "lane": "federation", "col": 2, "type": "backend", "label": "Doris Catalogs", "sublabel": "iceberg + jdbc federation" },
+    { "id": "cube_ready", "lane": "federation", "col": 0, "type": "backend", "label": "Cube.js Up", "sublabel": "semantic layer live" },
+    { "id": "submit_jobs", "lane": "submitter", "col": 4, "type": "backend", "label": "Submit Jobs", "sublabel": "5 PyFlink jobs · 3s stagger", "tag": "sequential" },
+    { "id": "monitor", "lane": "submitter", "col": 5, "type": "messagebus", "label": "Monitor Loop", "sublabel": "poll /jobs every 30s" },
+    { "id": "cancel_jobs", "lane": "exceptions", "col": 5, "type": "security", "label": "Cancel Jobs", "sublabel": "PATCH /jobs/:id?mode=cancel" },
+    { "id": "truncate", "lane": "exceptions", "col": 3, "type": "security", "label": "Truncate Tables", "sublabel": "Postgres + Iceberg bronze→gold", "width": 112 },
+    { "id": "replay", "lane": "exceptions", "col": 1, "type": "messagebus", "label": "Replay Offset 0", "sublabel": "job-submitter --from-beginning", "width": 112 }
+  ],
+  "edges": [
+    { "from": "dev_up", "to": "compose_up", "variant": "default" },
+    { "from": "compose_up", "to": "migrate", "variant": "default" },
+    { "from": "migrate", "to": "flink_ready", "label": "jobmanager healthy", "variant": "emphasis", "fromSide": "right", "toSide": "left", "labelDy": -20 },
+    { "from": "flink_ready", "to": "submit_jobs", "label": "wait_for_flink()", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "submit_jobs", "to": "monitor", "variant": "default" },
+    { "from": "migrate", "to": "doris_init", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "straight" },
+    { "from": "doris_init", "to": "cube_ready", "label": "nessie + FE/BE healthy", "variant": "default", "fromSide": "left", "toSide": "right" },
+    { "from": "monitor", "to": "cancel_jobs", "label": "make reprocess", "variant": "security", "role": "branch", "fromSide": "bottom", "toSide": "top", "route": "straight", "labelDy": 24 },
+    { "from": "cancel_jobs", "to": "truncate", "variant": "dashed" },
+    { "from": "truncate", "to": "replay", "variant": "dashed" },
+    { "from": "replay", "to": "submit_jobs", "label": "resubmit --from-beginning", "variant": "security", "role": "return", "fromSide": "top", "toSide": "bottom", "route": "drop" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Participants",
+      "items": [
+        "Developer triggers via make up / make reprocess",
+        "Docker Compose orchestrates 13 services behind healthchecks",
+        "Job Submitter is a one-shot init container (flink run --detached x5)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Order & Branches",
+      "items": [
+        "Bootstrap: broker/minio/postgres/nessie -> Flyway migrate -> Flink cluster healthy -> 5 jobs submitted bronze -> silver -> gold",
+        "Doris + Cube.js federation boots in parallel once migrate + Nessie are healthy — it does not wait on job submission"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Exceptions / Runbook",
+      "items": [
+        "make reprocess cancels every running Flink job via the REST API",
+        "Postgres and Iceberg tables (bronze -> gold) are truncated before restart",
+        "Job Submitter reruns with --from-beginning, resetting Kafka consumer groups to offset 0"
+      ]
+    }
+  ]
+}
