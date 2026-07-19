@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Cube.js Federated Query Sequence",
+    "subtitle": "Pre-aggregation cache miss, Doris multi-catalog fallback across Iceberg + Postgres",
+    "output": "sequence.html",
+    "viewBox": [980, 700]
+  },
+  "participants": [
+    { "id": "analyst", "type": "external", "label": "Analyst", "sublabel": "BI client" },
+    { "id": "cube", "type": "backend", "label": "Cube.js", "sublabel": "semantic API :4000" },
+    { "id": "doris", "type": "backend", "label": "Doris FE", "sublabel": "query router :9030" },
+    { "id": "lakehouse", "type": "database", "label": "Lakehouse", "sublabel": "Iceberg via Nessie REST" },
+    { "id": "pg", "type": "database", "label": "postgres cat.", "sublabel": "JDBC serving tables" }
+  ],
+  "messages": [
+    { "from": "analyst", "to": "cube", "y": 195, "label": "POST /cubejs-api/v1/load", "variant": "emphasis" },
+    { "from": "cube", "to": "doris", "y": 250, "label": "SELECT ... (pre-agg miss)", "variant": "emphasis" },
+    { "from": "doris", "to": "lakehouse", "y": 305, "label": "scan lakehouse.gold.session_metrics", "variant": "emphasis" },
+    { "from": "lakehouse", "to": "doris", "y": 355, "label": "rows (Iceberg snapshot)", "variant": "return" },
+    { "from": "doris", "to": "pg", "y": 405, "label": "scan postgres.public.users", "variant": "default" },
+    { "from": "pg", "to": "doris", "y": 455, "label": "rows (JDBC)", "variant": "return" },
+    { "from": "doris", "to": "cube", "y": 505, "label": "joined result set", "variant": "return" },
+    { "from": "cube", "to": "analyst", "y": 555, "label": "200 JSON rows", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "cube", "from": 190, "to": 585, "type": "backend" },
+    { "participant": "doris", "from": 245, "to": 530, "type": "backend" },
+    { "participant": "lakehouse", "from": 300, "to": 360, "type": "database" },
+    { "participant": "pg", "from": 400, "to": 460, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Happy Path",
+      "items": [
+        "Analyst -> Cube.js -> Doris -> data source -> response",
+        "Cube.js's own pre-aggregation cache is checked before any live query",
+        "Return messages are quieter than forward calls"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Cache Fallback",
+      "items": [
+        "A pre-aggregation miss forces a live federated query",
+        "Doris queries the Iceberg lakehouse catalog and the Postgres JDBC catalog in one session",
+        "Both catalogs are read before Doris returns a single joined result"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Timing",
+      "items": [
+        "The Iceberg scan reads a consistent snapshot via the Nessie REST catalog",
+        "Cube.js persists the new pre-aggregation so the next matching query is a cache hit",
+        "Analyst-facing latency includes both catalog round-trips on a miss"
+      ]
+    }
+  ]
+}
