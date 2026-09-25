@@ -1,7 +1,7 @@
 <!-- markdownlint-disable -->
 # ADR-0011 - Apache Doris + Cube.js as the federated query/semantic layer
 
-- **Status:** Accepted
+- **Status:** Accepted — amended 2026-09-25
 - **Data:** 2026-07-19 (retroactive — decision predates this ADR; see commit `3381a6c`, same commit as the Nessie catalog revert in ADR-0007)
 
 ---
@@ -28,3 +28,11 @@ Apache Doris for federation, Cube.js for the semantic/API layer on top of it. In
 - Analysts and BI tools query one system (Cube.js) with consistent metric definitions, without needing to know whether the underlying data lives in Iceberg or PostgreSQL.
 - Two more services to operate (Doris FE+BE, Cube.js) — a real increase in operational surface, traded off against the value of a unified semantic layer.
 - Doris's own internal gossip protocol currently depends on static container IPs (see `rfcs/RFC-0006-security.md`) — a networking convenience, not a security measure, and worth not confusing the two.
+
+## Emenda (2026-09-25)
+
+PostgreSQL is no longer a serving layer: it is the application's OLTP source of truth ([ADR-0012](0012-real-cdc-debezium-avro-registry.md)). Keeping the `postgres` JDBC catalog would let BI queries hit the transactional database, which is the anti-pattern CDC exists to avoid. Therefore:
+
+- The Doris `postgres` catalog is **removed**. Doris reads only the `lakehouse` Iceberg catalog, so it is the lakehouse's query engine rather than a federation layer.
+- Cube stays on top of Doris and serves the new gold star schema (`lakehouse.gold`).
+- The freshness BI sees is the chained-layer latency ([ADR-0013](0013-bronze-replay-log-chained-layers.md)) plus Doris's `metadata_refresh_interval_sec`.

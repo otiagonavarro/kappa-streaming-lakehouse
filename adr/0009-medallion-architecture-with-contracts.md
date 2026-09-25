@@ -1,7 +1,7 @@
 <!-- markdownlint-disable -->
 # ADR-0009 - Bronze/Silver/Gold medallion architecture with per-layer data contracts
 
-- **Status:** Accepted
+- **Status:** Accepted — amended by ADR-0013 and ADR-0014 (2026-09-25)
 - **Data:** 2026-07-19 (retroactive — decision predates this ADR; see commit `16401d9`)
 
 ---
@@ -28,3 +28,9 @@ Bronze/Silver/Gold medallion architecture, each table backed by its own Data Con
 - Clear validation boundary: anything in Silver or later is guaranteed to have passed the validation rules in `rfcs/RFC-0003-domain-model.md` ("Regras de Negócio").
 - More moving pieces than a flat model — more tables, more contracts, more Flink jobs (`raw_event_ingestion` → `silver_enrichment` → `session_aggregation`/`product_funnel` → `user_360`) to keep consistent.
 - Two contract standards now coexist in the bundle (Data Contract Specification for medallion tables, ODCS for the raw-events Kafka/Iceberg DDL — see ADR-0008) — a known inconsistency, tracked as a refactoring item in `rfcs/RFC-0010-roadmap.md` rather than silently normalized away.
+
+## Emenda (2026-09-25)
+
+- [ADR-0013](0013-bronze-replay-log-chained-layers.md): layers are now **chained** (Kafka → bronze → silver → gold). Previously every job read Kafka directly. Bronze becomes an append-only changelog and the lakehouse replay source.
+- [ADR-0014](0014-silver-boundary-and-changes-tables.md): silver is **source-aligned**, with no business rules. Sessionization moves from silver to gold. Each CDC entity has a `_changes` table (streamed by gold) and a current-state table.
+- [ADR-0008 amendment](0008-odcs-contract-driven-job-ddl.md): the two coexisting contract standards noted above are consolidated into ODCS v3.

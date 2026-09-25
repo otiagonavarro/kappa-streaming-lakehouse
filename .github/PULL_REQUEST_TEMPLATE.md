@@ -35,7 +35,7 @@
 <!-- Per specs/portfolio-conventions/spec.md and specs/bundle-structure-standard/spec.md -->
 
 - [ ] Commit messages follow Conventional Commits
-- [ ] Branch follows the naming scheme (`feature/*`, `fix/*`, `docs/*` off `develop`)
+- [ ] Branch follows the naming scheme (`feature/*`, `fix/*`, `docs/*`, `chore/*` off `main`)
 - [ ] New significant decisions are recorded as ADRs (context, problem, alternatives, decision, consequences)
 - [ ] Affected RFCs / `docs/tradeoffs.md` updated if this changes architecture or trade-offs
 - [ ] Diagrams updated (Mermaid, versioned alongside code) if this changes a flow or component

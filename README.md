@@ -7,6 +7,9 @@
   🇺🇸 **English** | 🇧🇷 [Português](./README.pt-BR.md)
 </div>
 
+> [!WARNING]
+> **Redesign in progress (phase 0 of 5: design).** This project is being rebuilt around a real OLTP application (PostgreSQL) with WAL-based CDC through Debezium into Redpanda, and a chained bronze → silver → gold medallion. The architecture described below is the **current** one and will be replaced phase by phase. See the [intent](./docs/features/2026-09-25-oltp-cdc-lakehouse/intent.md), [spec](./docs/features/2026-09-25-oltp-cdc-lakehouse/spec.md) and [plan](./docs/features/2026-09-25-oltp-cdc-lakehouse/plan.md), plus ADRs [0012](./adr/0012-real-cdc-debezium-avro-registry.md)–[0016](./adr/0016-iceberg-maintenance-via-spark.md).
+
 ## The Problem
 
 E-commerce platforms generate massive volumes of clickstream events every second — page views, add-to-cart actions, purchases. Product and marketing teams need real-time answers: which products convert, how users move through funnels, which sessions are still active.

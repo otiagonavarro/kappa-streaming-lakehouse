@@ -1,7 +1,7 @@
 <!-- markdownlint-disable -->
 # ADR-0003 - Kappa over Lambda architecture
 
-- **Status:** Accepted
+- **Status:** Accepted — amended by ADR-0013 (2026-09-25)
 - **Data:** 2026-07-19 (retroactive — decision predates this ADR; originally narrated in `docs/trade-offs.md`)
 
 ---
@@ -37,3 +37,11 @@ Kappa. Single streaming pipeline: `Kafka → Flink → Iceberg (lakehouse) + Pos
 - No batch/streaming divergence class of bugs — there is only one code path.
 - Reprocessing cost scales with total log size, not with a batch job's incremental delta — acceptable at this bundle's data volumes, worth revisiting if adopted at much larger scale.
 - Recommendation (unchanged from the original trade-off analysis): start with Kappa; add a batch path only if a specific computation cannot be expressed efficiently in a stream processor.
+
+## Emenda (2026-09-25)
+
+Amended by [ADR-0013](0013-bronze-replay-log-chained-layers.md). The single-streaming-path decision stands. What changes:
+
+- **Replay source:** reprocessing now replays the **bronze** Iceberg changelog instead of Kafka from offset 0. Redpanda keeps a 7-day retention as a buffer.
+- **Pipeline:** the pipeline is `Postgres (OLTP) → Debezium → Redpanda → Flink → Iceberg bronze → silver → gold → Doris/Cube`. PostgreSQL is no longer a serving sink; it is the application's source of truth ([ADR-0012](0012-real-cdc-debezium-avro-registry.md)).
+- **Latency:** the "sub-second" figure in the table above no longer holds at gold. Chained layers commit on Flink checkpoints, so freshness is tens of seconds to minutes.
