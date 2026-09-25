@@ -34,7 +34,7 @@ Delivery: six sequential PRs to `main` (phases 0–5). Each PR leaves `make up` 
 - **Edit:**
   - `services/simulator/src/simulator/main.py` (becomes the app loop), `services/simulator/pyproject.toml` + `uv.lock` (`psycopg[binary]`, `confluent-kafka[avro]`; drop `kafka-python`).
   - `infra/compose/docker-compose.yml`: Postgres flags; expose the registry on `8081`, moving the Flink UI to `8082`; add `kafka-connect`, `connect-init`, `topics-init`; the simulator gets the Postgres DSN and depends on `db-migrate`; drop the JDBC env from `job-submitter`.
-  - `infra/job-submitter/submit_jobs.py` (`JOBS = []` placeholder), `.env.example` (remove `SIMULATOR_*_TOPIC`; add `SCHEMA_REGISTRY_URL`, `TIME_SCALE`, `PII_HMAC_KEY`, the Debezium user), `Makefile` (`make connect-status`), `.github/workflows/ci.yml` (Postgres service for simulator tests), `tests/simulator/test_simulator.py` (removed/replaced).
+  - `infra/job-submitter/submit_jobs.py` (`JOBS = []` placeholder), `.env.example` (remove `SIMULATOR_*_TOPIC`; add `SCHEMA_REGISTRY_URL`, `TIME_SCALE`, `PII_HMAC_KEY`, the Debezium user), `Makefile` (`make connect-status`), `.github/workflows/ci.yml` (Postgres service for simulator tests), `tests/simulator/test_simulator.py` (removed/replaced), `README.md`, `README.pt-BR.md` (update the current-phase banner, ports, and quickstart instructions).
 
 ### Phase 2 · `feature/bronze-layer`
 - **Add:**
