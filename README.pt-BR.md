@@ -8,7 +8,7 @@
 </div>
 
 > [!WARNING]
-> **Redesenho em andamento (fase 0 de 5: design).** Este projeto está sendo reconstruído em torno de uma aplicação OLTP real (PostgreSQL), com CDC via WAL pelo Debezium para o Redpanda, e um medallion encadeado bronze → silver → gold. A arquitetura descrita abaixo é a **atual** e será substituída fase a fase. Veja o [intent](./docs/features/2026-09-25-oltp-cdc-lakehouse/intent.md), o [spec](./docs/features/2026-09-25-oltp-cdc-lakehouse/spec.md) e o [plan](./docs/features/2026-09-25-oltp-cdc-lakehouse/plan.md), além das ADRs [0012](./adr/0012-real-cdc-debezium-avro-registry.md)–[0016](./adr/0016-iceberg-maintenance-via-spark.md).
+> **Redesenho em andamento: fase 1 de 5 concluída (aplicação OLTP + CDC).** A aplicação da loja agora escreve no PostgreSQL (9 tabelas transacionais), o Debezium captura o WAL para o Redpanda (um tópico Avro por tabela, Schema Registry do Redpanda) e o clickstream da vitrine é produzido em Avro no tópico `clickstream.events`. **O lakehouse fica vazio até as fases 2–4**, que trazem os jobs de bronze, silver e gold. Tudo a partir de "Por Que Esta Arquitetura Funciona" descreve a arquitetura **anterior** e será reescrito na fase 5. Veja o [intent](./docs/features/2026-09-25-oltp-cdc-lakehouse/intent.md), o [spec](./docs/features/2026-09-25-oltp-cdc-lakehouse/spec.md) e o [plan](./docs/features/2026-09-25-oltp-cdc-lakehouse/plan.md), além das ADRs [0012](./adr/0012-real-cdc-debezium-avro-registry.md)–[0016](./adr/0016-iceberg-maintenance-via-spark.md).
 
 ## O Problema
 
@@ -81,26 +81,33 @@ A máquina de estados da sessão — ingestão de evento, validação, o gap wat
 
 ## Início Rápido
 
-**Requisitos:** Docker ≥ 24, Docker Compose ≥ 2.20, 8 GB RAM, 4 CPUs
+**Requisitos:** Docker ≥ 24, Docker Compose ≥ 2.20, 12 GB de RAM, 4 CPUs
 
 ```bash
 git clone https://github.com/otiagonavarro/kappa-streaming-lakehouse kappa-streaming-lakehouse
 cd kappa-streaming-lakehouse
 
-# 1. Sobe a stack completa (MinIO por padrão, sem precisar de credenciais GCS)
+# 1. Suba o stack (MinIO por padrão, sem credenciais GCS).
+#    Vindo de um checkout antigo? Apague o volume antigo do Postgres antes: make down
 make up
 
-# 2. Aguarde ~2 minutos até todos os serviços ficarem saudáveis
-make check
+# 2. Confira o conector de CDC (espere "state": "RUNNING")
+make connect-status
 
-# 3. Consulte a camada de serving
-psql postgresql://kappa:kappa@localhost:5432/kappa -f examples/queries/top_converting_products.sql
+# 3. Acompanhe os pedidos da aplicação avançando no ciclo de vida
+#    (1 dia simulado = TIME_SCALE segundos, 60 por padrão)
+psql postgresql://kappa:kappa@localhost:5432/kappa -c "select status, count(*) from orders group by 1"
 ```
 
-Abra a Flink Web UI em **<http://localhost:8081>** para ver os jobs e DAGs em execução.  
-Abra o console do MinIO em **<http://localhost:9001>** (minioadmin / minioadmin) para navegar pelos arquivos de dados do Iceberg.  
-Abra o Cube.js Playground em **<http://localhost:4000>** para explorar a camada semântica e rodar queries de exemplo.  
-Consulte o Doris diretamente com `mysql -h127.0.0.1 -P9030 -uroot`. Dois catálogos já vêm registrados: `lakehouse` (tabelas Iceberg via Nessie, ex. `lakehouse.gold.session_metrics`) e `postgres` (a camada de serving federada via JDBC, ex. `postgres.public.session_metrics`, `postgres.public.users`) — ambos consultáveis na mesma sessão, incluindo joins entre eles.
+| Serviço | URL | O que olhar |
+| --- | --- | --- |
+| Redpanda Console | <http://localhost:8080> | tópicos de CDC `shop.public.*` e `clickstream.events`, decodificados pelo Schema Registry; o conector do Debezium em *Connect* |
+| Schema Registry | <http://localhost:8081> | `curl localhost:8081/subjects` |
+| Kafka Connect | <http://localhost:8083> | `make connect-status` |
+| Flink Web UI | <http://localhost:8082> | sem jobs até a fase 2 |
+| Console do MinIO | <http://localhost:9001> | minioadmin / minioadmin |
+
+Rode os testes do simulador (Postgres real via Testcontainers, então o Docker é necessário) com `make test-simulator`.
 
 ---
 

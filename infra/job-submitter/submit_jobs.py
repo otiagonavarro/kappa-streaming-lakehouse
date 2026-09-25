@@ -15,13 +15,10 @@ FLINK_RPC_PORT = "6123"
 FLINK_API = f"http://{FLINK_HOST}:{FLINK_PORT}"
 FLINK_HOME = os.environ.get("FLINK_HOME", "/opt/flink")
 
-JOBS = [
-    ("Bronze: Raw Event Ingestion",  "jobs/raw_event_ingestion.py"),
-    ("Silver: Event Enrichment",      "jobs/silver_enrichment.py"),
-    ("Gold: Session Aggregation",     "jobs/session_aggregation.py"),
-    ("Gold: Product Funnel",          "jobs/product_funnel.py"),
-    ("Gold: User 360",                "jobs/user_360.py"),
-]
+# Emptied in phase 1 of the OLTP + CDC redesign: the legacy clickstream jobs were
+# removed, and the layered jobs (bronze_cdc, bronze_clickstream, …) are added here
+# as their layers land. See docs/features/2026-09-25-oltp-cdc-lakehouse/plan.md.
+JOBS: list[tuple[str, str]] = []
 
 
 def wait_for_flink(timeout: int = 120) -> None:
@@ -95,6 +92,10 @@ def main() -> int:
         except Exception as exc:
             print(f"ERROR submitting {name}: {exc}", file=sys.stderr)
             return 1
+
+    if not JOBS:
+        print("No jobs to submit yet (redesign in progress).")
+        return 0
 
     print("All jobs submitted.")
     try:

@@ -1,108 +1,86 @@
-import json
+"""Shop application simulator: one process that plays the storefront (clickstream +
+checkout), the back office (catalog/customer churn) and the order workers
+(payment, shipping, delivery, refunds) against the OLTP database."""
 import os
+import random
 import signal
-import sys
 import time
 
-import click  # type: ignore
-from kafka import KafkaProducer  # type: ignore
-try:
-    from kafka.errors import NoBrokersAvailable  # type: ignore
-except ImportError:
-    from kafka.errors import KafkaConnectionError as NoBrokersAvailable  # type: ignore  # kafka-python ≥3.0
+import click
+import psycopg
 
-from .events import EventGenerator
+from .config import SimConfig
+from .producers.clickstream import ClickstreamProducer
+from .seed import seed_if_empty
+from .traffic.backoffice import Backoffice
+from .traffic.sessions import TrafficGenerator
+from .workers.progress import advance_orders
+
+TICK_SECONDS = 1.0
 
 
-def _make_producer(brokers: str, retries: int = 10) -> KafkaProducer:
-    last_exc: Exception = NoBrokersAvailable()
+def _connect(dsn: str, retries: int = 30) -> psycopg.Connection:
     for attempt in range(1, retries + 1):
         try:
-            return KafkaProducer(
-                bootstrap_servers=brokers.split(","),
-                value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-                acks="all",
-            )
-        except NoBrokersAvailable as exc:
-            last_exc = exc
-            if attempt < retries:
-                click.echo(f"Broker not ready (attempt {attempt}/{retries}), retrying in 3s…", err=True)
-                time.sleep(3)
-    raise last_exc
+            return psycopg.connect(dsn, autocommit=True)
+        except psycopg.OperationalError:
+            if attempt == retries:
+                raise
+            click.echo(f"Postgres not ready (attempt {attempt}/{retries}), retrying in 2s…", err=True)
+            time.sleep(2)
+    raise AssertionError("unreachable")
 
 
 @click.command()
+@click.option("--postgres-dsn", default=lambda: os.environ.get("POSTGRES_DSN", "postgresql://kappa:kappa@localhost:5432/kappa"))
 @click.option("--brokers", default=lambda: os.environ.get("KAFKA_BROKERS", "localhost:9092"), show_default=True)
-@click.option("--topic", default=lambda: os.environ.get("SIMULATOR_TOPIC", "raw-events"), show_default=True)
 @click.option(
-    "--entity-topic",
-    default=lambda: os.environ.get("SIMULATOR_ENTITY_TOPIC", "entity-updates"),
+    "--schema-registry",
+    default=lambda: os.environ.get("SCHEMA_REGISTRY_URL", "http://localhost:8081"),
     show_default=True,
 )
-@click.option("--rate", default=lambda: int(os.environ.get("SIMULATOR_RATE", "10")), type=int, help="Events per second")
-@click.option("--count", default=0, type=int, help="Produce exactly N events then exit (0 = infinite)")
-@click.option("--seed", default=None, type=int, help="RNG seed for reproducible output")
-def cli(brokers: str, topic: str, entity_topic: str, rate: int, count: int, seed: int | None):
-    """Publish synthetic e-commerce events to Kafka topics."""
-    generator = EventGenerator(seed=seed)
-    producer = _make_producer(brokers)
+@click.option(
+    "--topic", default=lambda: os.environ.get("CLICKSTREAM_TOPIC", "clickstream.events"), show_default=True
+)
+@click.option("--customers", default=200, show_default=True, help="Customers created by the first-boot seed")
+@click.option("--seed", default=None, type=int, help="RNG seed for reproducible behaviour")
+@click.option("--ticks", default=0, type=int, help="Run N one-second ticks then exit (0 = forever)")
+def cli(postgres_dsn, brokers, schema_registry, topic, customers, seed, ticks):
+    """Run the shop application against Postgres and publish clickstream to Redpanda."""
+    cfg = SimConfig.from_env()
+    rng = random.Random(seed)
+    conn = _connect(postgres_dsn)
+    if seed_if_empty(conn, rng, customers=customers):
+        click.echo(f"Seeded catalog and {customers} customers.")
 
-    produced = 0
-    interval = 1.0 / rate if rate > 0 else 0.0
+    producer = ClickstreamProducer(brokers, schema_registry, topic)
+    traffic = TrafficGenerator(conn, cfg, rng, producer.send)
+    office = Backoffice(conn, cfg, rng)
 
-    def _shutdown(sig, frame):
-        click.echo(f"\nShutting down — produced {produced} events.", err=True)
-        producer.flush()
-        producer.close()
-        sys.exit(0)
+    running = True
 
-    signal.signal(signal.SIGTERM, _shutdown)
-    signal.signal(signal.SIGINT, _shutdown)
+    def _stop(*_):
+        nonlocal running
+        running = False
 
-    # Emit entity snapshots on startup (before the main event loop)
-    click.echo(f"Seeding entity snapshots to {entity_topic}…")
-    snapshots = generator.generate_entity_snapshots()
-    for snap in snapshots:
-        producer.send(entity_topic, value=snap)
-    producer.flush()
-    users = len([s for s in snapshots if s["entity_type"] == "user"])
-    products = len([s for s in snapshots if s["entity_type"] == "product"])
-    categories = len([s for s in snapshots if s["entity_type"] == "category"])
-    click.echo(
-        f"  {len(snapshots)} entity snapshots sent ({users} users, {products} products, {categories} categories)"
-    )
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
 
-    click.echo(f"Producing to {brokers}/{topic} at {rate} eps (seed={seed}, count={'∞' if count == 0 else count})")
+    click.echo(f"Running: 1 simulated day = {cfg.seconds_per_day:g}s, {cfg.sessions_per_second:g} sessions/s → {topic}")
+    tick = 0
+    while running and (ticks == 0 or tick < ticks):
+        started = time.monotonic()
+        traffic.tick(TICK_SECONDS)
+        office.tick()
+        progressed = advance_orders(conn, cfg, rng)
+        tick += 1
+        if tick % 30 == 0:
+            click.echo(f"tick {tick}: traffic={traffic.stats} orders={dict(progressed)} send_failures={producer.failed}")
+        time.sleep(max(0.0, TICK_SECONDS - (time.monotonic() - started)))
 
-    while count == 0 or produced < count:
-        start = time.monotonic()
-        event = generator.generate()
-        producer.send(topic, value=event)
-        produced += 1
-
-        # On purchase events, also emit order + order_item to entity-updates
-        if event["event_type"] == "purchase":
-            order = generator.generate_order(event["user_id"], event["product_id"])
-            producer.send(entity_topic, value=order)
-            item = generator.generate_order_item(
-                order["order_id"], event["product_id"], event["metadata"]["items"]
-            )
-            producer.send(entity_topic, value=item)
-
-        # Periodically emit entity updates (~every 100 events)
-        if produced % 100 == 0:
-            update = generator.generate_entity_update()
-            if update is not None:
-                producer.send(entity_topic, value=update)
-
-        if produced % 100 == 0:
-            click.echo(f"  {produced} events produced", err=True)
-
-        elapsed = time.monotonic() - start
-        sleep_for = interval - elapsed
-        if sleep_for > 0:
-            time.sleep(sleep_for)
-
-    producer.flush()
-    producer.close()
-    click.echo(f"Done — {produced} events produced.")
+    pending = producer.flush()
+    conn.close()
+    click.echo(f"Stopped after {tick} ticks: {traffic.stats}")
+    if producer.failed or pending:
+        # librdkafka already retried; anything left is lost clickstream, so fail loudly.
+        raise click.ClickException(f"{producer.failed} clickstream events failed delivery, {pending} still pending")
