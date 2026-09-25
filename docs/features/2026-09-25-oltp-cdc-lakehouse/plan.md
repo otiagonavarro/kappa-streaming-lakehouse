@@ -7,7 +7,7 @@ Delivery: six sequential PRs to `main` (phases 0–5). Each PR leaves `make up` 
 
 ## Files to Change
 
-### Phase 0 · `docs/oltp-cdc-lakehouse-design`
+### Phase 0 · `docs/features/2026-09-25-oltp-cdc-lakehouse`
 - **Add:** `docs/features/2026-09-25-oltp-cdc-lakehouse/{intent,spec,plan}.md`, `adr/0012-real-cdc-debezium-avro-registry.md` (supersedes 0010), `adr/0013-bronze-replay-log-chained-layers.md` (amends 0003), `adr/0014-silver-boundary-and-changes-tables.md` (amends 0009), `adr/0015-pii-hashed-at-bronze-edge.md`, `adr/0016-iceberg-maintenance-via-spark.md`.
 - **Edit:**
   - `adr/0003`, `adr/0009`: add an "Amended by" note.
