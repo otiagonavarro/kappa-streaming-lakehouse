@@ -114,7 +114,7 @@ The state machine is enforced in the domain layer. A `CHECK` on `orders.status` 
 - **`fct_orders`**: a streaming `GROUP BY order_id` over `orders_changes`, `MAX(CASE WHEN status = … THEN _source_ts END)` per stage plus the latest attributes by LSN. This is order-independent, and the upsert goes to Iceberg keyed by `order_id`.
 - **SCD2** (`dim_customer`, `dim_product`): each change creates a version row keyed `(id, valid_from = _source_ts)`. `valid_to` = `MIN(valid_from)` of later versions of the same id (streaming self-join + aggregation, order-independent). `is_current = valid_to IS NULL`. `dim_customer` combines customer + primary-address versions (a version on either side starts a new customer version). State is unbounded and accepted at this scale (≈200 customers / 60 products); TTL is not set.
 - **`fct_order_items` → `dim_product`**: an event-time temporal join (`FOR SYSTEM_TIME AS OF order_created_at`) against a versioned view over `products_changes`.
-- **`sessions`**: session window (30 min gap) on `silver.clickstream_events` by `anonymous_id`. `customer_id` is the last non-null value in the session (stitching).
+- **`sessions`**: session window (30 min gap) on `silver.clickstream_events` by stable `session_id`; `anonymous_id` is retained only for anonymous-to-customer stitching. `customer_id` is the last non-null value in the session (stitching).
 - **`funnel_1m`**: session-level funnel state associates each order with its corresponding checkout/session before aggregation and emits the resulting status into the appropriate 1 min reporting window; `abandoned = checkouts − orders` is computed from those associated session outcomes.
 
 ### Contracts (ODCS v3 only)
