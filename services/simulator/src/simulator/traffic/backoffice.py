@@ -1,10 +1,12 @@
 """Back-office activity: the slow churn of catalog and customer data that makes
 slowly-changing dimensions (SCD2) meaningful downstream."""
+
+import contextlib
 import random
 from decimal import Decimal
 
-import psycopg
-from psycopg import sql
+import psycopg  # pyright: ignore[reportMissingImports]
+from psycopg import sql  # pyright: ignore[reportMissingImports]
 
 from ..config import SimConfig
 from ..domain.errors import DomainError
@@ -38,11 +40,10 @@ class Backoffice:
         done = []
         for action in self.ACTIONS:
             if self._rng.random() < self._rates.get(action, 0.0):
-                try:
+                # e.g. the picked row changed meanwhile; try again next tick
+                with contextlib.suppress(DomainError):
                     getattr(self, f"_{action}")()
                     done.append(action)
-                except DomainError:
-                    pass  # e.g. the picked row changed meanwhile; try again next tick
         return done
 
     def _change_price(self):
