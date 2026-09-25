@@ -1,7 +1,7 @@
 <!-- markdownlint-disable -->
 # ADR-0010 - Single wide-schema entity-updates topic over per-entity topics
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0012 (2026-09-25)
 - **Data:** 2026-07-19 (retroactive — decision predates this ADR; see commit `2e715b0`)
 
 ---
@@ -28,3 +28,7 @@ Single `entity-updates` topic with a wide, nullable schema, distinguished by an 
 - Simpler consumer code path — one topic to subscribe to, one deserialization path, for any job that needs entity updates.
 - Weaker per-entity typing than dedicated topics would provide — consumers must branch on the implicit entity-type discriminator and know which fields are meaningful for each type.
 - Schema evolution of any single entity type touches the shared wide schema, which is more coupling than per-entity topics would have, but was judged an acceptable trade for this bundle's scope.
+
+## Emenda (2026-09-25)
+
+Superseded by [ADR-0012](0012-real-cdc-debezium-avro-registry.md). The simulated `entity-updates` topic is replaced by real WAL-based CDC from PostgreSQL through Debezium, with **one topic and one Avro schema per table** (`shop.public.<table>`). The wide nullable schema and its implicit discriminator are removed. This ADR is kept for history.
