@@ -32,8 +32,9 @@ class ClickstreamProducer:
         self._producer.produce(self._topic, key=event["session_id"], value=event, on_delivery=self._on_delivery)
         self._producer.poll(0)
 
-    def flush(self, timeout: float = 10.0) -> None:
-        self._producer.flush(timeout)
+    def flush(self, timeout: float = 10.0) -> int:
+        """Wait for in-flight events; returns how many are still undelivered."""
+        return self._producer.flush(timeout)
 
     def _on_delivery(self, err: KafkaError | None, _msg: Message) -> None:
         if err is not None:

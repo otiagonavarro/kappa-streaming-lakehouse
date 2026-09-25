@@ -78,6 +78,9 @@ def cli(postgres_dsn, brokers, schema_registry, topic, customers, seed, ticks):
             click.echo(f"tick {tick}: traffic={traffic.stats} orders={dict(progressed)} send_failures={producer.failed}")
         time.sleep(max(0.0, TICK_SECONDS - (time.monotonic() - started)))
 
-    producer.flush()
+    pending = producer.flush()
     conn.close()
     click.echo(f"Stopped after {tick} ticks: {traffic.stats}")
+    if producer.failed or pending:
+        # librdkafka already retried; anything left is lost clickstream, so fail loudly.
+        raise click.ClickException(f"{producer.failed} clickstream events failed delivery, {pending} still pending")

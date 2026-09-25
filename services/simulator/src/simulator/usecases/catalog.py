@@ -2,6 +2,7 @@
 from decimal import Decimal
 
 import psycopg  # pyright: ignore[reportMissingImports]
+from psycopg import sql
 
 from ..domain.errors import DomainError, NotFound
 
@@ -28,16 +29,17 @@ def create_product(
 
 def change_price(conn: psycopg.Connection, product_id, new_price: Decimal):
     _ensure_positive(new_price)
-    _update_product(conn, product_id, "price = %s", new_price)
+    _update_product(conn, product_id, "price", new_price)
 
 
 def discontinue_product(conn: psycopg.Connection, product_id):
-    _update_product(conn, product_id, "status = %s", "discontinued")
+    _update_product(conn, product_id, "status", "discontinued")
 
 
-def _update_product(conn, product_id, assignment: str, value) -> None:
+def _update_product(conn, product_id, column: str, value) -> None:
     cur = conn.execute(
-        f"UPDATE products SET {assignment}, updated_at = now() WHERE product_id = %s", (value, product_id)
+        sql.SQL("UPDATE products SET {} = %s, updated_at = now() WHERE product_id = %s").format(sql.Identifier(column)),
+        (value, product_id),
     )
     if cur.rowcount == 0:
         raise NotFound(f"product {product_id}")

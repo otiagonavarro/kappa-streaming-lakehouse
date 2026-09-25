@@ -2,6 +2,7 @@
 from decimal import Decimal
 
 import psycopg  # pyright: ignore[reportMissingImports]
+from psycopg import sql
 
 from ..domain.errors import DomainError, NotFound, OutOfStock, ProductUnavailable
 from ..domain.order_state import TIMESTAMP_COLUMN, OrderStatus, ensure_transition
@@ -22,7 +23,11 @@ def place_order(conn: psycopg.Connection, customer_id, items: dict, *, session_i
 
 
 def _create_order_and_reserve_stock(conn, customer_id, items, session_id):
-    customer = conn.execute("SELECT status FROM customers WHERE customer_id = %s", (customer_id,)).fetchone()
+    # FOR SHARE serializes with forget_customer (which locks the row FOR UPDATE)
+    # while still letting the same customer check out concurrently.
+    customer = conn.execute(
+        "SELECT status FROM customers WHERE customer_id = %s FOR SHARE", (customer_id,)
+    ).fetchone()
     if customer is None:
         raise NotFound(f"customer {customer_id}")
     if customer[0] != "active":
@@ -89,9 +94,10 @@ def transition(conn: psycopg.Connection, order_id, target: OrderStatus) -> Decim
         raise NotFound(f"order {order_id}")
     current, total = row
     ensure_transition(current, target)
-    column = TIMESTAMP_COLUMN[target]
     conn.execute(
-        f"UPDATE orders SET status = %s, {column} = now(), updated_at = now() WHERE order_id = %s",
+        sql.SQL("UPDATE orders SET status = %s, {} = now(), updated_at = now() WHERE order_id = %s").format(
+            sql.Identifier(TIMESTAMP_COLUMN[target])
+        ),
         (target.value, order_id),
     )
     return total

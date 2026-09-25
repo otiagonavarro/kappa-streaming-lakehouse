@@ -4,6 +4,7 @@ import random
 from decimal import Decimal
 
 import psycopg
+from psycopg import sql
 
 from ..config import SimConfig
 from ..domain.errors import DomainError
@@ -78,7 +79,8 @@ class Backoffice:
         customers.forget_customer(self._conn, customer_id)
 
     def _pick(self, query: str) -> tuple:
-        row = self._conn.execute(f"{query} ORDER BY random() LIMIT 1").fetchone()
+        """Random row of an internal, constant query (never user input)."""
+        row = self._conn.execute(sql.SQL("{} ORDER BY random() LIMIT 1").format(sql.SQL(query))).fetchone()
         if row is None:
             raise DomainError("nothing to pick")
         return row

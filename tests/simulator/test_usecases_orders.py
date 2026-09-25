@@ -11,6 +11,7 @@ from simulator.domain.errors import (  # pyright: ignore[reportMissingImports]
 )
 from simulator.usecases import (  # pyright: ignore[reportMissingImports]
     catalog,
+    customers,
     orders,
     payments,
     shipments,
@@ -133,3 +134,15 @@ def test_cannot_pay_twice_or_ship_unpaid(conn, shop):
     payments.pay_order(conn, order_id, "pix")
     with pytest.raises(InvalidTransition):
         payments.pay_order(conn, order_id, "pix")
+
+
+def test_checkout_blocks_a_concurrent_erasure_of_the_same_customer(conn, second_conn, shop):
+    """place_order holds a share lock on the customer, so forget_customer cannot slip in between
+    the status check and the order insert."""
+    import psycopg
+
+    with conn.transaction():
+        orders.place_order(conn, shop["customer"], {shop["a"]: 1})
+        second_conn.execute("SET lock_timeout = '200ms'")
+        with pytest.raises(psycopg.errors.LockNotAvailable):
+            customers.forget_customer(second_conn, shop["customer"])
