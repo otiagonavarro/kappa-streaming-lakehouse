@@ -4,12 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kappa-simulator"
-version = "0.1.0"
+version = "0.2.0"
+description = "Shop application simulator: transactional use cases on Postgres plus Avro clickstream."
 requires-python = ">=3.10"
 dependencies = [
-    "kafka-python>=2.0.2",
+    "psycopg[binary]>=3.1",
+    "confluent-kafka[avro]>=2.3",
     "faker>=24.0",
     "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "testcontainers[postgres]>=4.0",
 ]
 
 [project.scripts]
@@ -17,6 +26,9 @@ simulator = "simulator.main:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+simulator = ["schemas/*.avsc"]
 
 [tool.pytest.ini_options]
 testpaths = ["../../tests/simulator"]

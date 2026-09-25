@@ -12,9 +12,11 @@ services:
       - --node-id=0
       - --kafka-addr=PLAINTEXT://0.0.0.0:9092
       - --advertise-kafka-addr=PLAINTEXT://broker:9092
+      - --schema-registry-addr=0.0.0.0:8081
     ports:
       - "9092:9092"
       - "9644:9644"
+      - "8081:8081"   # Schema Registry (Avro, ADR-0012)
     healthcheck:
       test: ["CMD", "rpk", "cluster", "info", "--brokers=localhost:9092"]
       interval: 10s
@@ -30,9 +32,30 @@ services:
       KAFKA_BROKERS: broker:9092
       REDPANDA_ADMINAPI_ENABLED: "true"
       REDPANDA_ADMINAPI_URLS: http://broker:9644
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: http://broker:8081
+      CONNECT_ENABLED: "true"
+      CONNECT_CLUSTERS_NAME: debezium
+      CONNECT_CLUSTERS_URL: http://kafka-connect:8083
     depends_on:
       broker:
         condition: service_healthy
+
+  # ── Topic init (retention, partitions) ──────────────────────────────────────
+  # CDC topics are created by Kafka Connect from the connector's topic.creation.*
+  # settings; the clickstream topic is created here.
+  topics-init:
+    image: redpandadata/redpanda:v23.3.6
+    depends_on:
+      broker:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        rpk topic create $${CLICKSTREAM_TOPIC} --brokers broker:9092 -p 6 -r 1 -c retention.ms=604800000 || true;
+        rpk topic alter-config $${CLICKSTREAM_TOPIC} --brokers broker:9092 --set retention.ms=604800000;
+      "
+    environment:
+      CLICKSTREAM_TOPIC: ${CLICKSTREAM_TOPIC:-clickstream.events}
 
   # ── MinIO (local GCS proxy) ───────────────────────────────────────────────
   minio:
@@ -95,9 +118,19 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── PostgreSQL serving layer ───────────────────────────────────────────────
+  # ── PostgreSQL: the shop application's OLTP database (CDC source) ──────────
   postgres:
     image: postgres:15.6-alpine
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=4
+      - -c
+      - max_wal_senders=4
+      - -c
+      - max_slot_wal_keep_size=1GB
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-kappa}
       POSTGRES_USER: ${POSTGRES_USER:-kappa}
@@ -115,12 +148,64 @@ services:
   # ── Flyway DB migrations ──────────────────────────────────────────────────
   db-migrate:
     image: flyway/flyway:10.10.0
-    command: -url=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-kappa} -user=${POSTGRES_USER:-kappa} -password=${POSTGRES_PASSWORD:-kappa} -locations=filesystem:/flyway/sql migrate
+    command: >-
+      -url=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-kappa}
+      -user=${POSTGRES_USER:-kappa} -password=${POSTGRES_PASSWORD:-kappa}
+      -locations=filesystem:/flyway/sql
+      -placeholders.debezium_user=${DEBEZIUM_USER:-debezium}
+      -placeholders.debezium_password=${DEBEZIUM_PASSWORD:-debezium}
+      migrate
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - ../../services/db/migrations:/flyway/sql
+
+  # ── Kafka Connect + Debezium (WAL → Redpanda, ADR-0012) ─────────────────────
+  kafka-connect:
+    build:
+      context: ../kafka-connect
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: broker:9092
+      GROUP_ID: shop-connect
+      CONFIG_STORAGE_TOPIC: _connect-configs
+      OFFSET_STORAGE_TOPIC: _connect-offsets
+      STATUS_STORAGE_TOPIC: _connect-status
+      CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      STATUS_STORAGE_REPLICATION_FACTOR: "1"
+      HEAP_OPTS: -Xms256m -Xmx768m
+      # Lets the connector config read credentials from env: ${env:DEBEZIUM_PASSWORD}
+      CONNECT_CONFIG_PROVIDERS: env
+      CONNECT_CONFIG_PROVIDERS_ENV_CLASS: org.apache.kafka.common.config.provider.EnvVarConfigProvider
+      DEBEZIUM_USER: ${DEBEZIUM_USER:-debezium}
+      DEBEZIUM_PASSWORD: ${DEBEZIUM_PASSWORD:-debezium}
+      POSTGRES_DB: ${POSTGRES_DB:-kappa}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8083/connectors"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      broker:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  # ── Debezium connector registration (idempotent PUT) ────────────────────────
+  connect-init:
+    image: curlimages/curl:8.7.1
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    volumes:
+      - ../kafka-connect/shop-connector.json:/shop-connector.json:ro
+    entrypoint: >
+      /bin/sh -c "
+        curl -sf -X PUT -H 'Content-Type: application/json' --data @/shop-connector.json http://kafka-connect:8083/connectors/shop-postgres-cdc/config && echo ' → connector shop-postgres-cdc registered';
+      "
 
   # ── Flink JobManager ──────────────────────────────────────────────────────
   jobmanager:
@@ -141,7 +226,7 @@ services:
         s3.path.style.access: true
         pekko.framesize: 2147483647b
     ports:
-      - "8081:8081"
+      - "8082:8081"   # Flink UI on host :8082 (host :8081 is the Schema Registry)
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/overview"]
       interval: 10s
@@ -175,19 +260,25 @@ services:
       jobmanager:
         condition: service_healthy
 
-  # ── Event Simulator ───────────────────────────────────────────────────────
+  # ── Shop application simulator (OLTP writes + Avro clickstream) ────────────
   simulator:
     build:
       context: ../../services/simulator
       dockerfile: Dockerfile
     environment:
+      POSTGRES_DSN: postgresql://${POSTGRES_USER:-kappa}:${POSTGRES_PASSWORD:-kappa}@postgres:5432/${POSTGRES_DB:-kappa}
       KAFKA_BROKERS: ${KAFKA_BROKERS:-broker:9092}
-      SIMULATOR_RATE: ${SIMULATOR_RATE:-10}
-      SIMULATOR_TOPIC: ${SIMULATOR_TOPIC:-raw-events}
-      SIMULATOR_ENTITY_TOPIC: ${SIMULATOR_ENTITY_TOPIC:-entity-updates}
+      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://broker:8081}
+      CLICKSTREAM_TOPIC: ${CLICKSTREAM_TOPIC:-clickstream.events}
+      TIME_SCALE: ${TIME_SCALE:-60}
+      SIM_SESSIONS_PER_SECOND: ${SIM_SESSIONS_PER_SECOND:-2}
     depends_on:
-      broker:
-        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+      topics-init:
+        condition: service_completed_successfully
+      connect-init:
+        condition: service_completed_successfully
 
   # ── Job Submitter (init) ──────────────────────────────────────────────────
   job-submitter:
@@ -205,16 +296,12 @@ services:
       MINIO_BUCKET: ${MINIO_BUCKET:-kappa-lake}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-minio}
       GCS_BUCKET: ${GCS_BUCKET:-}
-      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql://kappa:kappa@postgres:5432/kappa}
       FLINK_CHECKPOINT_INTERVAL_MS: ${FLINK_CHECKPOINT_INTERVAL_MS:-30000}
-      SIMULATOR_ENTITY_TOPIC: ${SIMULATOR_ENTITY_TOPIC:-entity-updates}
     depends_on:
       jobmanager:
         condition: service_healthy
       taskmanager:
         condition: service_started
-      db-migrate:
-        condition: service_completed_successfully
       nessie:
         condition: service_healthy
       broker:

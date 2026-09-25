@@ -26,12 +26,28 @@ jobs:
 
   test-simulator:
     runs-on: ubuntu-latest
+    # Use cases are tested against a real Postgres: transactional behaviour
+    # (atomic checkout, SKIP LOCKED workers) is exactly what is under test.
+    services:
+      postgres:
+        image: postgres:15.6-alpine
+        env:
+          POSTGRES_USER: kappa
+          POSTGRES_PASSWORD: kappa
+          POSTGRES_DB: kappa_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kappa -d kappa_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_POSTGRES_DSN: postgresql://kappa:kappa@localhost:5432/kappa_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - run: pip install -e services/simulator pytest pytest-cov
+      - run: pip install -e "services/simulator[dev]"
       - name: Run tests with coverage
         # No coverage baseline has been measured yet, so this reports coverage
         # without a hard gate. Once a real baseline exists, add

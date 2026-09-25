@@ -1,4 +1,4 @@
-.PHONY: up down check reprocess logs sim-start sim-stop submit-jobs jobs-status
+.PHONY: up down check reprocess logs sim-start sim-stop submit-jobs jobs-status connect-status test-simulator
 
 up:
 	cp -n .env.example .env 2>/dev/null || true
@@ -22,6 +22,12 @@ sim-start:
 sim-stop:
 	docker compose -f infra/compose/docker-compose.yml stop simulator
 
+connect-status:
+	@curl -s http://localhost:8083/connectors/shop-postgres-cdc/status | python3 -m json.tool
+
+test-simulator:
+	cd services/simulator && uv run --extra dev pytest -q ../../tests/simulator
+
 demo-time-travel:
 	@bash scripts/time-travel-demo.sh
 
@@ -38,6 +44,8 @@ help:
 	@echo "  logs - View the logs of the infrastructure"
 	@echo "  sim-start - Start the simulator"
 	@echo "  sim-stop - Stop the simulator"
+	@echo "  connect-status - Show the Debezium connector status"
+	@echo "  test-simulator - Run simulator tests (needs Docker for Postgres)"
 	@echo "  demo-time-travel - Run the time travel demo"
 	@echo "  demo-schema-evolution - Run the schema evolution demo"
 	@echo "  help - Show this help message"

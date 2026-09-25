@@ -1,0 +1,25 @@
+{
+  "type": "record",
+  "name": "ClickstreamEvent",
+  "namespace": "shop.clickstream",
+  "doc": "Storefront behavioural event. Purchases are not clickstream: they are orders, captured by CDC.",
+  "fields": [
+    {"name": "event_id", "type": {"type": "string", "logicalType": "uuid"}},
+    {"name": "event_type", "type": "string", "doc": "page_view | add_to_cart | remove_from_cart | begin_checkout (validated in silver)"},
+    {"name": "event_ts", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "session_id", "type": {"type": "string", "logicalType": "uuid"}},
+    {"name": "anonymous_id", "type": {"type": "string", "logicalType": "uuid"}, "doc": "Browser cookie id"},
+    {"name": "customer_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null, "doc": "Null until the visitor logs in"},
+    {"name": "device_type", "type": "string"},
+    {"name": "user_agent", "type": "string"},
+    {"name": "page_type", "type": ["null", "string"], "default": null},
+    {"name": "page_url", "type": ["null", "string"], "default": null},
+    {"name": "referrer", "type": ["null", "string"], "default": null},
+    {"name": "category_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null},
+    {"name": "product_id", "type": ["null", {"type": "string", "logicalType": "uuid"}], "default": null},
+    {"name": "quantity", "type": ["null", "int"], "default": null},
+    {"name": "unit_price", "type": ["null", {"type": "bytes", "logicalType": "decimal", "precision": 10, "scale": 2}], "default": null, "doc": "Price shown on the page; may differ from the price charged at checkout"},
+    {"name": "cart_value", "type": ["null", {"type": "bytes", "logicalType": "decimal", "precision": 12, "scale": 2}], "default": null},
+    {"name": "item_count", "type": ["null", "int"], "default": null}
+  ]
+}

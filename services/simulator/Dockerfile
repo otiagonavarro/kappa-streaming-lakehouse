@@ -5,9 +5,6 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY src/ ./src/
 
-RUN pip install --no-cache-dir -e .
-
-ENV PYTHONPATH=/app/src
+RUN pip install --no-cache-dir .
 
 ENTRYPOINT ["simulator"]
-CMD ["--rate", "10"]
